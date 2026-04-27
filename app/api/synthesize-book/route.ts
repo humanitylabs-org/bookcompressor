@@ -2,6 +2,15 @@ import { NextResponse } from "next/server";
 import { callOpenRouter } from "@/lib/openrouter";
 import { buildBookSynthesisMessages, mergePromptConfig, PromptConfig } from "@/lib/prompts";
 
+const DEFAULT_MODEL = "anthropic/claude-sonnet-4.5";
+
+type ModelRouting = {
+  passOneModel?: string;
+  passTwoModel?: string;
+  passThreeModel?: string;
+  synthesisModel?: string;
+};
+
 type SynthesisRequest = {
   apiKey?: string;
   model?: string;
@@ -12,7 +21,15 @@ type SynthesisRequest = {
     summary: string;
   }>;
   promptConfig?: Partial<PromptConfig>;
+  modelRouting?: Partial<ModelRouting>;
 };
+
+function sanitizeModel(value: unknown, fallback: string): string {
+  if (typeof value !== "string") return fallback;
+  const trimmed = value.trim();
+  if (!trimmed) return fallback;
+  return trimmed.slice(0, 120);
+}
 
 export const runtime = "nodejs";
 
@@ -26,7 +43,8 @@ export async function POST(request: Request) {
   }
 
   const apiKey = body.apiKey?.trim();
-  const model = body.model?.trim() || "openai/gpt-4o-mini";
+  const baseModel = sanitizeModel(body.model, DEFAULT_MODEL);
+  const synthesisModel = sanitizeModel(body.modelRouting?.synthesisModel, baseModel);
   const bookTitle = body.bookTitle?.trim() || "Untitled Book";
   const chapterSummaries = Array.isArray(body.chapterSummaries)
     ? body.chapterSummaries.filter((item) => item?.summary && item?.chapterTitle)
@@ -44,18 +62,19 @@ export async function POST(request: Request) {
   try {
     const synthesis = await callOpenRouter({
       apiKey,
-      model,
+      model: synthesisModel,
       messages: buildBookSynthesisMessages({
         config: promptConfig,
         bookTitle,
         chapterSummaries,
       }),
       temperature: 0.35,
-      maxTokens: 1800,
+      maxTokens: 1900,
     });
 
     return NextResponse.json({
       bookTitle,
+      modelUsed: synthesisModel,
       finalSynthesis: synthesis.text,
       usage: synthesis.usage,
     });

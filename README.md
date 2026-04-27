@@ -4,7 +4,12 @@ Book Compressor is a transient EPUB summarization tool.
 
 - Upload an EPUB
 - Parse chapters in the browser
-- Run chapter-by-chapter 3-pass compression through OpenRouter
+- Run chapter-by-chapter compression through OpenRouter (1, 2, or 3 passes)
+- Use Claude Sonnet 4.5 as the default baseline model
+- Enable optional per-pass model routing (for cheaper early passes)
+- Preview chapter count and estimated API call volume before starting
+- Stop an in-flight run from the UI
+- Restore prior output from local browser checkpoint after refresh
 - Edit all prompt modules directly in the UI before each run
 - Generate a final book synthesis
 - Download all outputs as a ZIP file
@@ -69,6 +74,21 @@ The setup panel exposes all live prompts used by the pipeline:
 Users can edit prompts before clicking **Start Compression**.
 Reloading the page resets prompt text to default values.
 
+## Run Modes
+
+- 1 pass: fastest and lowest cost
+- 2 passes: adds quality review + revision
+- 3 passes: deepest quality mode
+
+## Cost / Call Safety
+
+Before each run, the UI shows an estimate for:
+- selected chapter count
+- expected model call count
+- approximate cost (when OpenRouter pricing is available)
+
+Use Max Chapters + Pass Mode to control spend.
+
 Supported placeholders inside user prompts:
 - `{{chapter_index}}`
 - `{{total_chapters}}`
@@ -83,11 +103,11 @@ Supported placeholders inside user prompts:
 ## API Routes
 
 - `POST /api/summarize-chapter`
-  - Input: `apiKey`, `model`, `chapterTitle`, `chapterText`, `chapterIndex`, `totalChapters`, `detailLevel`
-  - Output: pass1, pass2, final chapter summary
+  - Input: `apiKey`, `model`, `chapterTitle`, `chapterText`, `chapterIndex`, `totalChapters`, `detailLevel`, `passCount`, `promptConfig`, `modelRouting`
+  - Output: pass outputs + final chapter summary
 
 - `POST /api/synthesize-book`
-  - Input: `apiKey`, `model`, `bookTitle`, `chapterSummaries[]`
+  - Input: `apiKey`, `model`, `bookTitle`, `chapterSummaries[]`, `promptConfig`, `modelRouting`
   - Output: full book compression
 
 ## Notes

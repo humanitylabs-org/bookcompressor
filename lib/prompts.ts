@@ -55,7 +55,8 @@ Return exactly these sections:
 ## Potential Distortions or Overclaims
 ## Nuance That Should Be Added
 ## Compression Quality Score (1-10)
-## Revision Guidance`,
+## Revision Guidance
+## Revised Chapter Compression`,
   passThreeSystem:
     "You are a synthesis editor. Produce a final chapter compression by integrating draft + critique. Keep it clear, faithful, and readable.",
   passThreeUser: `Create the final chapter compression for "{{chapter_title}}".
