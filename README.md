@@ -5,7 +5,7 @@ Book Compressor is a transient EPUB summarization tool.
 - Upload an EPUB
 - Parse chapters in the browser
 - Run chapter-by-chapter compression through OpenRouter (1, 2, or 3 passes)
-- Use Claude Sonnet 4.5 as the default baseline model
+- Use Claude Haiku 4.5 as the default baseline model
 - Enable optional per-pass model routing (for cheaper early passes)
 - Preview chapter count and estimated API call volume before starting
 - Stop an in-flight run from the UI

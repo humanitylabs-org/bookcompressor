@@ -10,7 +10,7 @@ import rehypeSanitize from "rehype-sanitize";
 import { DEFAULT_PROMPT_CONFIG } from "@/lib/prompts";
 import type { DetailLevel, PromptConfig } from "@/lib/prompts";
 
-const DEFAULT_BASELINE_MODEL = "anthropic/claude-sonnet-4.5";
+const DEFAULT_BASELINE_MODEL = "anthropic/claude-haiku-4.5";
 const DEFAULT_MODEL_ROUTING = {
   passOneModel: "anthropic/claude-3.5-haiku",
   passTwoModel: "anthropic/claude-3.5-haiku",
@@ -325,7 +325,7 @@ export default function Home() {
   const [apiKey, setApiKey] = useState("");
   const [baselineModel, setBaselineModel] = useState(DEFAULT_BASELINE_MODEL);
   const [detailLevel, setDetailLevel] = useState<DetailLevel>("balanced");
-  const [maxChapters, setMaxChapters] = useState("20");
+  const [maxChapters, setMaxChapters] = useState("0");
   const [passCount, setPassCount] = useState<1 | 2 | 3>(1);
   const [useAdvancedRouting, setUseAdvancedRouting] = useState(false);
   const [modelRouting, setModelRouting] = useState<ModelRouting>({ ...DEFAULT_MODEL_ROUTING });
@@ -926,7 +926,7 @@ export default function Home() {
           <section className="card">
             <h2 className="card__title">Compression Setup</h2>
             <p className="card__subtitle">
-              Baseline defaults to Claude Sonnet. Use Fast mode for lower cost.
+              Baseline defaults to Claude Haiku. Use Fast mode for lower cost.
             </p>
 
             <form onSubmit={handleCompress}>
@@ -951,7 +951,7 @@ export default function Home() {
                   onChange={(event) => setBaselineModel(event.target.value)}
                   placeholder={DEFAULT_BASELINE_MODEL}
                 />
-                <p className="hint">Default: anthropic/claude-sonnet-4.5</p>
+                <p className="hint">Default: anthropic/claude-haiku-4.5</p>
               </label>
 
               <div className="field">
@@ -990,7 +990,7 @@ export default function Home() {
                   value={maxChapters}
                   onChange={(event) => setMaxChapters(event.target.value)}
                 />
-                <p className="hint">Default is 20 to avoid accidental large runs.</p>
+                <p className="hint">Default is 0 (process all detected chapters).</p>
               </label>
 
               <label className="field">

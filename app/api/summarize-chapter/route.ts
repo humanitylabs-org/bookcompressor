@@ -10,7 +10,7 @@ import {
 } from "@/lib/prompts";
 
 const MAX_CHAPTER_CHARS = 120_000;
-const DEFAULT_MODEL = "anthropic/claude-sonnet-4.5";
+const DEFAULT_MODEL = "anthropic/claude-haiku-4.5";
 
 type ModelRouting = {
   passOneModel?: string;

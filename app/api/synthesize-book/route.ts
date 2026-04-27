@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { callOpenRouter } from "@/lib/openrouter";
 import { buildBookSynthesisMessages, mergePromptConfig, PromptConfig } from "@/lib/prompts";
 
-const DEFAULT_MODEL = "anthropic/claude-sonnet-4.5";
+const DEFAULT_MODEL = "anthropic/claude-haiku-4.5";
 
 type ModelRouting = {
   passOneModel?: string;
