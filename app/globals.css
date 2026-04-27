@@ -142,6 +142,56 @@ a {
   line-height: 1.45;
 }
 
+.prompt-editor {
+  margin-bottom: 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.02);
+  padding: 12px;
+}
+
+.prompt-editor__summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-family: var(--font-plex-mono), "IBM Plex Mono", monospace;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.prompt-vars {
+  margin: 8px 0 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-subtle);
+  font-family: var(--font-plex-mono), "IBM Plex Mono", monospace;
+}
+
+.prompt-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-soft);
+  color: var(--text);
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.45;
+  font-family: var(--font-plex-mono), "IBM Plex Mono", monospace;
+  resize: vertical;
+}
+
+.textarea:focus {
+  outline: none;
+  border-color: #6d6d78;
+}
+
 .checkbox {
   display: flex;
   align-items: flex-start;

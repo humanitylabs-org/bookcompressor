@@ -5,6 +5,7 @@ Book Compressor is a transient EPUB summarization tool.
 - Upload an EPUB
 - Parse chapters in the browser
 - Run chapter-by-chapter 3-pass compression through OpenRouter
+- Edit all prompt modules directly in the UI before each run
 - Generate a final book synthesis
 - Download all outputs as a ZIP file
 
@@ -56,6 +57,28 @@ vercel --prod
 ```
 
 No environment variables are required for MVP operation.
+
+## Prompt Editing
+
+The setup panel exposes all live prompts used by the pipeline:
+- Pass 1 system + user
+- Pass 2 system + user
+- Pass 3 system + user
+- Book synthesis system + user
+
+Users can edit prompts before clicking **Start Compression**.
+Reloading the page resets prompt text to default values.
+
+Supported placeholders inside user prompts:
+- `{{chapter_index}}`
+- `{{total_chapters}}`
+- `{{chapter_title}}`
+- `{{target_length}}`
+- `{{chapter_text}}`
+- `{{pass_one_output}}`
+- `{{pass_two_output}}`
+- `{{book_title}}`
+- `{{chapter_summaries}}`
 
 ## API Routes
 

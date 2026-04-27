@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { callOpenRouter } from "@/lib/openrouter";
-import { synthesisPrompt } from "@/lib/prompts";
+import { buildBookSynthesisMessages, mergePromptConfig, PromptConfig } from "@/lib/prompts";
 
 type SynthesisRequest = {
   apiKey?: string;
@@ -11,6 +11,7 @@ type SynthesisRequest = {
     chapterTitle: string;
     summary: string;
   }>;
+  promptConfig?: Partial<PromptConfig>;
 };
 
 export const runtime = "nodejs";
@@ -30,6 +31,7 @@ export async function POST(request: Request) {
   const chapterSummaries = Array.isArray(body.chapterSummaries)
     ? body.chapterSummaries.filter((item) => item?.summary && item?.chapterTitle)
     : [];
+  const promptConfig = mergePromptConfig(body.promptConfig);
 
   if (!apiKey) {
     return NextResponse.json({ error: "OpenRouter API key is required." }, { status: 400 });
@@ -43,7 +45,8 @@ export async function POST(request: Request) {
     const synthesis = await callOpenRouter({
       apiKey,
       model,
-      messages: synthesisPrompt({
+      messages: buildBookSynthesisMessages({
+        config: promptConfig,
         bookTitle,
         chapterSummaries,
       }),

@@ -3,7 +3,8 @@
 import { FormEvent, useMemo, useState } from "react";
 import JSZip from "jszip";
 import slugify from "slugify";
-import type { DetailLevel } from "@/lib/prompts";
+import { DEFAULT_PROMPT_CONFIG } from "@/lib/prompts";
+import type { DetailLevel, PromptConfig } from "@/lib/prompts";
 
 type ParsedChapter = {
   chapterIndex: number;
@@ -31,6 +32,21 @@ type ChapterResult = {
   processedChars?: number;
   error?: string;
 };
+
+const PROMPT_FIELD_META: Array<{
+  key: keyof PromptConfig;
+  label: string;
+  rows: number;
+}> = [
+  { key: "passOneSystem", label: "Pass 1 System Prompt", rows: 3 },
+  { key: "passOneUser", label: "Pass 1 User Prompt", rows: 10 },
+  { key: "passTwoSystem", label: "Pass 2 System Prompt", rows: 3 },
+  { key: "passTwoUser", label: "Pass 2 User Prompt", rows: 10 },
+  { key: "passThreeSystem", label: "Pass 3 System Prompt", rows: 3 },
+  { key: "passThreeUser", label: "Pass 3 User Prompt", rows: 9 },
+  { key: "bookSystem", label: "Book Synthesis System Prompt", rows: 3 },
+  { key: "bookUser", label: "Book Synthesis User Prompt", rows: 10 },
+];
 
 function cleanText(input: string): string {
   return input.replace(/\s+/g, " ").trim();
@@ -172,6 +188,9 @@ export default function Home() {
   const [maxChapters, setMaxChapters] = useState("0");
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
   const [epubFile, setEpubFile] = useState<File | null>(null);
+  const [promptConfig, setPromptConfig] = useState<PromptConfig>({
+    ...DEFAULT_PROMPT_CONFIG,
+  });
 
   const [bookTitle, setBookTitle] = useState("");
   const [chapterResults, setChapterResults] = useState<ChapterResult[]>([]);
@@ -200,6 +219,14 @@ export default function Home() {
         entry.chapterIndex === chapterIndex ? { ...entry, ...updates } : entry,
       ),
     );
+  };
+
+  const updatePromptField = (field: keyof PromptConfig, value: string) => {
+    setPromptConfig((previous) => ({ ...previous, [field]: value }));
+  };
+
+  const resetPromptsToDefault = () => {
+    setPromptConfig({ ...DEFAULT_PROMPT_CONFIG });
   };
 
   const handleCompress = async (event: FormEvent) => {
@@ -268,6 +295,7 @@ export default function Home() {
               chapterText: chapter.chapterText,
               chapterIndex: chapter.chapterIndex,
               totalChapters: selectedChapters.length,
+              promptConfig,
             }),
           });
 
@@ -316,6 +344,7 @@ export default function Home() {
             model: model.trim(),
             bookTitle: parsed.bookTitle,
             chapterSummaries: doneNow,
+            promptConfig,
           }),
         });
 
@@ -476,6 +505,43 @@ export default function Home() {
                   onChange={(event) => setEpubFile(event.target.files?.[0] || null)}
                 />
               </label>
+
+              <details className="prompt-editor" open>
+                <summary className="prompt-editor__summary">Prompt Modules (Editable Before Run)</summary>
+                <p className="hint">
+                  Edit any prompt below before clicking Start Compression. Reloading the page resets
+                  to defaults.
+                </p>
+                <p className="prompt-vars">
+                  Placeholder variables: {"{{chapter_index}}"}, {"{{total_chapters}}"},{" "}
+                  {"{{chapter_title}}"}, {"{{target_length}}"}, {"{{chapter_text}}"},{" "}
+                  {"{{pass_one_output}}"}, {"{{pass_two_output}}"}, {"{{book_title}}"},{" "}
+                  {"{{chapter_summaries}}"}
+                </p>
+                <div className="button-row" style={{ marginBottom: 12 }}>
+                  <button
+                    className="button button--ghost"
+                    type="button"
+                    onClick={resetPromptsToDefault}
+                  >
+                    Reset Prompts to Defaults
+                  </button>
+                </div>
+
+                <div className="prompt-grid">
+                  {PROMPT_FIELD_META.map((field) => (
+                    <label className="field" key={field.key}>
+                      <span className="field__label">{field.label}</span>
+                      <textarea
+                        className="textarea"
+                        rows={field.rows}
+                        value={promptConfig[field.key]}
+                        onChange={(event) => updatePromptField(field.key, event.target.value)}
+                      />
+                    </label>
+                  ))}
+                </div>
+              </details>
 
               <label className="checkbox">
                 <input

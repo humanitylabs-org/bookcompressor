@@ -1,4 +1,19 @@
+import type { OpenRouterMessage } from "@/lib/openrouter";
+
 export type DetailLevel = "tight" | "balanced" | "deep";
+
+export type PromptConfig = {
+  passOneSystem: string;
+  passOneUser: string;
+  passTwoSystem: string;
+  passTwoUser: string;
+  passThreeSystem: string;
+  passThreeUser: string;
+  bookSystem: string;
+  bookUser: string;
+};
+
+const MAX_PROMPT_LENGTH = 20_000;
 
 const detailTargets: Record<DetailLevel, string> = {
   tight: "180-260 words",
@@ -6,24 +21,12 @@ const detailTargets: Record<DetailLevel, string> = {
   deep: "420-700 words",
 };
 
-export function passOnePrompt(input: {
-  chapterTitle: string;
-  chapterText: string;
-  chapterIndex: number;
-  totalChapters: number;
-  detailLevel: DetailLevel;
-}) {
-  return [
-    {
-      role: "system" as const,
-      content:
-        "You are a precise nonfiction chapter compressor. Keep fidelity high. Do not invent claims. If uncertain, say uncertain.",
-    },
-    {
-      role: "user" as const,
-      content: `Compress Chapter ${input.chapterIndex} of ${input.totalChapters}.
-Title: ${input.chapterTitle}
-Target length: ${detailTargets[input.detailLevel]}
+export const DEFAULT_PROMPT_CONFIG: PromptConfig = {
+  passOneSystem:
+    "You are a precise nonfiction chapter compressor. Keep fidelity high. Do not invent claims. If uncertain, say uncertain.",
+  passOneUser: `Compress Chapter {{chapter_index}} of {{total_chapters}}.
+Title: {{chapter_title}}
+Target length: {{target_length}}
 
 Return exactly these sections with markdown headings:
 ## Core Thesis
@@ -34,33 +37,18 @@ Return exactly these sections with markdown headings:
 ## Open Questions or Weak Spots
 
 Chapter text:
-${input.chapterText}`,
-    },
-  ];
-}
+{{chapter_text}}`,
+  passTwoSystem:
+    "You are a strict quality auditor. Your job is to find misses, overclaims, and distortion. Be concrete and terse.",
+  passTwoUser: `Audit this chapter summary for completeness and faithfulness.
 
-export function passTwoPrompt(input: {
-  chapterTitle: string;
-  chapterText: string;
-  passOneOutput: string;
-}) {
-  return [
-    {
-      role: "system" as const,
-      content:
-        "You are a strict quality auditor. Your job is to find misses, overclaims, and distortion. Be concrete and terse.",
-    },
-    {
-      role: "user" as const,
-      content: `Audit this chapter summary for completeness and faithfulness.
-
-Chapter title: ${input.chapterTitle}
+Chapter title: {{chapter_title}}
 
 Draft summary:
-${input.passOneOutput}
+{{pass_one_output}}
 
 Chapter text for verification:
-${input.chapterText}
+{{chapter_text}}
 
 Return exactly these sections:
 ## Missing Important Points
@@ -68,32 +56,16 @@ Return exactly these sections:
 ## Nuance That Should Be Added
 ## Compression Quality Score (1-10)
 ## Revision Guidance`,
-    },
-  ];
-}
-
-export function passThreePrompt(input: {
-  chapterTitle: string;
-  passOneOutput: string;
-  passTwoOutput: string;
-  detailLevel: DetailLevel;
-}) {
-  return [
-    {
-      role: "system" as const,
-      content:
-        "You are a synthesis editor. Produce a final chapter compression by integrating draft + critique. Keep it clear, faithful, and readable.",
-    },
-    {
-      role: "user" as const,
-      content: `Create the final chapter compression for \"${input.chapterTitle}\".
-Target length: ${detailTargets[input.detailLevel]}
+  passThreeSystem:
+    "You are a synthesis editor. Produce a final chapter compression by integrating draft + critique. Keep it clear, faithful, and readable.",
+  passThreeUser: `Create the final chapter compression for "{{chapter_title}}".
+Target length: {{target_length}}
 
 Draft summary:
-${input.passOneOutput}
+{{pass_one_output}}
 
 Audit critique:
-${input.passTwoOutput}
+{{pass_two_output}}
 
 Return exactly these sections:
 ## Chapter Compression
@@ -101,30 +73,9 @@ Return exactly these sections:
 ## Practical Applications
 ## What To Revisit In Full Text
 ## Confidence Notes`,
-    },
-  ];
-}
-
-export function synthesisPrompt(input: {
-  bookTitle: string;
-  chapterSummaries: Array<{ chapterIndex: number; chapterTitle: string; summary: string }>;
-}) {
-  const chapterBlock = input.chapterSummaries
-    .map(
-      (chapter) =>
-        `### Chapter ${chapter.chapterIndex}: ${chapter.chapterTitle}\n${chapter.summary}`,
-    )
-    .join("\n\n");
-
-  return [
-    {
-      role: "system" as const,
-      content:
-        "You are a book-level synthesis writer. Build a coherent compression of the full book from chapter summaries only.",
-    },
-    {
-      role: "user" as const,
-      content: `Book title: ${input.bookTitle}
+  bookSystem:
+    "You are a book-level synthesis writer. Build a coherent compression of the full book from chapter summaries only.",
+  bookUser: `Book title: {{book_title}}
 
 Use the chapter summaries below and produce:
 ## Book Compression
@@ -135,7 +86,136 @@ Use the chapter summaries below and produce:
 ## One-Page Executive Abstract
 
 Chapter summaries:
-${chapterBlock}`,
+{{chapter_summaries}}`,
+};
+
+function normalizePrompt(candidate: unknown, fallback: string): string {
+  if (typeof candidate !== "string") return fallback;
+  const trimmed = candidate.trim();
+  if (!trimmed) return fallback;
+  return candidate.slice(0, MAX_PROMPT_LENGTH);
+}
+
+export function mergePromptConfig(overrides?: Partial<PromptConfig>): PromptConfig {
+  const source = overrides || {};
+
+  return {
+    passOneSystem: normalizePrompt(source.passOneSystem, DEFAULT_PROMPT_CONFIG.passOneSystem),
+    passOneUser: normalizePrompt(source.passOneUser, DEFAULT_PROMPT_CONFIG.passOneUser),
+    passTwoSystem: normalizePrompt(source.passTwoSystem, DEFAULT_PROMPT_CONFIG.passTwoSystem),
+    passTwoUser: normalizePrompt(source.passTwoUser, DEFAULT_PROMPT_CONFIG.passTwoUser),
+    passThreeSystem: normalizePrompt(source.passThreeSystem, DEFAULT_PROMPT_CONFIG.passThreeSystem),
+    passThreeUser: normalizePrompt(source.passThreeUser, DEFAULT_PROMPT_CONFIG.passThreeUser),
+    bookSystem: normalizePrompt(source.bookSystem, DEFAULT_PROMPT_CONFIG.bookSystem),
+    bookUser: normalizePrompt(source.bookUser, DEFAULT_PROMPT_CONFIG.bookUser),
+  };
+}
+
+function fillTemplate(template: string, values: Record<string, string | number>): string {
+  let output = template;
+
+  for (const [key, value] of Object.entries(values)) {
+    output = output.replace(new RegExp(`{{\\s*${key}\\s*}}`, "g"), String(value));
+  }
+
+  return output;
+}
+
+export function buildPassOneMessages(input: {
+  config: PromptConfig;
+  chapterTitle: string;
+  chapterText: string;
+  chapterIndex: number;
+  totalChapters: number;
+  detailLevel: DetailLevel;
+}): OpenRouterMessage[] {
+  return [
+    {
+      role: "system",
+      content: input.config.passOneSystem,
+    },
+    {
+      role: "user",
+      content: fillTemplate(input.config.passOneUser, {
+        chapter_index: input.chapterIndex,
+        total_chapters: input.totalChapters,
+        chapter_title: input.chapterTitle,
+        target_length: detailTargets[input.detailLevel],
+        chapter_text: input.chapterText,
+      }),
+    },
+  ];
+}
+
+export function buildPassTwoMessages(input: {
+  config: PromptConfig;
+  chapterTitle: string;
+  chapterText: string;
+  passOneOutput: string;
+}): OpenRouterMessage[] {
+  return [
+    {
+      role: "system",
+      content: input.config.passTwoSystem,
+    },
+    {
+      role: "user",
+      content: fillTemplate(input.config.passTwoUser, {
+        chapter_title: input.chapterTitle,
+        chapter_text: input.chapterText,
+        pass_one_output: input.passOneOutput,
+      }),
+    },
+  ];
+}
+
+export function buildPassThreeMessages(input: {
+  config: PromptConfig;
+  chapterTitle: string;
+  passOneOutput: string;
+  passTwoOutput: string;
+  detailLevel: DetailLevel;
+}): OpenRouterMessage[] {
+  return [
+    {
+      role: "system",
+      content: input.config.passThreeSystem,
+    },
+    {
+      role: "user",
+      content: fillTemplate(input.config.passThreeUser, {
+        chapter_title: input.chapterTitle,
+        target_length: detailTargets[input.detailLevel],
+        pass_one_output: input.passOneOutput,
+        pass_two_output: input.passTwoOutput,
+      }),
+    },
+  ];
+}
+
+export function buildBookSynthesisMessages(input: {
+  config: PromptConfig;
+  bookTitle: string;
+  chapterSummaries: Array<{ chapterIndex: number; chapterTitle: string; summary: string }>;
+}): OpenRouterMessage[] {
+  const chapterBlock = input.chapterSummaries
+    .map(
+      (chapter) =>
+        `### Chapter ${chapter.chapterIndex}: ${chapter.chapterTitle}\n${chapter.summary}`,
+    )
+    .join("\n\n");
+
+  return [
+    {
+      role: "system",
+      content: input.config.bookSystem,
+    },
+    {
+      role: "user",
+      content: fillTemplate(input.config.bookUser, {
+        book_title: input.bookTitle,
+        chapter_summaries: chapterBlock,
+      }),
     },
   ];
 }

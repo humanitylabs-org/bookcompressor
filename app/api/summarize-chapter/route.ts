@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { callOpenRouter } from "@/lib/openrouter";
 import {
+  buildPassOneMessages,
+  buildPassThreeMessages,
+  buildPassTwoMessages,
   DetailLevel,
-  passOnePrompt,
-  passTwoPrompt,
-  passThreePrompt,
+  mergePromptConfig,
+  PromptConfig,
 } from "@/lib/prompts";
 
 const MAX_CHAPTER_CHARS = 120_000;
@@ -17,6 +19,7 @@ type SummarizeRequest = {
   chapterIndex?: number;
   totalChapters?: number;
   detailLevel?: DetailLevel;
+  promptConfig?: Partial<PromptConfig>;
 };
 
 function normalizeDetailLevel(level: string | undefined): DetailLevel {
@@ -43,6 +46,7 @@ export async function POST(request: Request) {
   const chapterIndex = Number(body.chapterIndex || 1);
   const totalChapters = Number(body.totalChapters || 1);
   const detailLevel = normalizeDetailLevel(body.detailLevel);
+  const promptConfig = mergePromptConfig(body.promptConfig);
 
   if (!apiKey) {
     return NextResponse.json({ error: "OpenRouter API key is required." }, { status: 400 });
@@ -64,7 +68,8 @@ export async function POST(request: Request) {
     const passOne = await callOpenRouter({
       apiKey,
       model,
-      messages: passOnePrompt({
+      messages: buildPassOneMessages({
+        config: promptConfig,
         chapterTitle,
         chapterText,
         chapterIndex,
@@ -78,7 +83,8 @@ export async function POST(request: Request) {
     const passTwo = await callOpenRouter({
       apiKey,
       model,
-      messages: passTwoPrompt({
+      messages: buildPassTwoMessages({
+        config: promptConfig,
         chapterTitle,
         chapterText,
         passOneOutput: passOne.text,
@@ -90,7 +96,8 @@ export async function POST(request: Request) {
     const passThree = await callOpenRouter({
       apiKey,
       model,
-      messages: passThreePrompt({
+      messages: buildPassThreeMessages({
+        config: promptConfig,
         chapterTitle,
         passOneOutput: passOne.text,
         passTwoOutput: passTwo.text,
