@@ -4,6 +4,9 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import JSZip from "jszip";
 import slugify from "slugify";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import rehypeSanitize from "rehype-sanitize";
 import { DEFAULT_PROMPT_CONFIG } from "@/lib/prompts";
 import type { DetailLevel, PromptConfig } from "@/lib/prompts";
 
@@ -912,6 +915,11 @@ export default function Home() {
             Upload an EPUB, run chapter compression in configurable passes, and download
             structured output. Processing is transient and designed without content persistence.
           </p>
+          <div className="hero__actions">
+            <Link className="button button--ghost button-link" href="/viewer">
+              Open Viewer
+            </Link>
+          </div>
         </section>
 
         <div className="grid">
@@ -1153,7 +1161,8 @@ export default function Home() {
               </div>
 
               <p className="hint" style={{ marginTop: 12 }}>
-                Want a formatted reading experience? <Link href="/viewer">Open Viewer</Link>
+                After downloading a ZIP, open <Link href="/viewer">/viewer</Link> for a chapter
+                sidebar + mobile-friendly reading layout.
               </p>
             </form>
 
@@ -1176,7 +1185,8 @@ export default function Home() {
           <section className="card">
             <h2 className="card__title">Run Output</h2>
             <p className="card__subtitle">
-              {bookTitle ? `Book: ${bookTitle}` : "No book processed yet."}
+              {bookTitle ? `Book: ${bookTitle}` : "No book processed yet."} This preview follows
+              the same markdown rendering style as the Viewer.
             </p>
 
             {resumeNotice ? <div className="alert alert--info">{resumeNotice}</div> : null}
@@ -1209,7 +1219,13 @@ export default function Home() {
                     </p>
 
                     {chapter.error ? <pre className="markdown">Error: {chapter.error}</pre> : null}
-                    {chapter.finalSummary ? <pre className="markdown">{chapter.finalSummary}</pre> : null}
+                    {chapter.finalSummary ? (
+                      <article className="bcv-markdown bcv-inline-markdown">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
+                          {chapter.finalSummary}
+                        </ReactMarkdown>
+                      </article>
+                    ) : null}
                   </article>
                 ))}
               </div>
@@ -1220,7 +1236,11 @@ export default function Home() {
                 <h3 className="card__title" style={{ marginTop: 20 }}>
                   Full Book Compression
                 </h3>
-                <pre className="markdown">{bookSynthesis}</pre>
+                <article className="bcv-markdown bcv-inline-markdown">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
+                    {bookSynthesis}
+                  </ReactMarkdown>
+                </article>
               </>
             ) : null}
 

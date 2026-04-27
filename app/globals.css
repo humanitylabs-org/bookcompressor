@@ -66,6 +66,12 @@ a {
   max-width: 860px;
 }
 
+.hero__actions {
+  margin-top: 14px;
+  display: flex;
+  gap: 10px;
+}
+
 .grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -217,6 +223,13 @@ a {
   padding: 0 16px;
   cursor: pointer;
   transition: opacity 0.15s ease;
+}
+
+.button-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
 }
 
 .button:hover {
@@ -647,6 +660,12 @@ a {
   border: none;
   padding: 0;
   background: transparent;
+}
+
+.bcv-inline-markdown {
+  margin-top: 8px;
+  font-size: 14px;
+  line-height: 1.62;
 }
 
 .bcv-main__pager {

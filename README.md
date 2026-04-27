@@ -14,6 +14,7 @@ Book Compressor is a transient EPUB summarization tool.
 - Generate a final book synthesis
 - Download all outputs as a ZIP file
 - Open `/viewer` to upload a result ZIP and browse chapters in a mobile-friendly reader UI
+- Main compressor page includes direct Viewer links and uses matching markdown render principles for output preview
 
 ## Core Constraints
 
