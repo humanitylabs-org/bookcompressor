@@ -13,6 +13,7 @@ Book Compressor is a transient EPUB summarization tool.
 - Edit all prompt modules directly in the UI before each run
 - Generate a final book synthesis
 - Download all outputs as a ZIP file
+- Open `/viewer` to upload a result ZIP and browse chapters in a mobile-friendly reader UI
 
 ## Core Constraints
 
@@ -99,6 +100,13 @@ Supported placeholders inside user prompts:
 - `{{pass_two_output}}`
 - `{{book_title}}`
 - `{{chapter_summaries}}`
+
+## Viewer Route
+
+- `/viewer`
+  - Client-side ZIP viewer for Book Compressor outputs
+  - Parses ZIP locally (no server upload)
+  - Sidebar chapter navigation + responsive mobile chapter drawer
 
 ## API Routes
 

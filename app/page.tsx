@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import JSZip from "jszip";
 import slugify from "slugify";
 import { DEFAULT_PROMPT_CONFIG } from "@/lib/prompts";
@@ -1150,6 +1151,10 @@ export default function Home() {
                   Clear Output
                 </button>
               </div>
+
+              <p className="hint" style={{ marginTop: 12 }}>
+                Want a formatted reading experience? <Link href="/viewer">Open Viewer</Link>
+              </p>
             </form>
 
             <div className="legal">
