@@ -43,6 +43,14 @@ function titleFromMarkdown(content: string): string | null {
   return null;
 }
 
+function detectRootPrefix(paths: string[]): string {
+  if (!paths.length) return "";
+  const segments = paths[0].split("/");
+  if (segments.length < 2) return "";
+  const candidate = `${segments[0]}/`;
+  return paths.every((p) => p.startsWith(candidate)) ? candidate : "";
+}
+
 function titleFromFilename(filename: string): string {
   const base = filename.split("/").pop()?.replace(/\.md$/i, "") || filename;
   const withoutPrefix = base.replace(/^\d+[-_]?/, "");
@@ -84,7 +92,11 @@ export default function ViewerPage() {
     try {
       const zip = await JSZip.loadAsync(await file.arrayBuffer());
 
-      const summaryFile = zip.file("summary.json");
+      const allPaths = Object.keys(zip.files).filter((p) => !zip.files[p].dir);
+      const rootPrefix = detectRootPrefix(allPaths);
+      const resolve = (path: string) => zip.file(`${rootPrefix}${path}`);
+
+      const summaryFile = resolve("summary.json");
       let summary: SummaryPayload | null = null;
       if (summaryFile) {
         try {
@@ -94,13 +106,14 @@ export default function ViewerPage() {
         }
       }
 
-      const bookCompressionFile = zip.file("book-compression.md");
+      const bookCompressionFile = resolve("book-compression.md");
       const compressionContent = bookCompressionFile
         ? await bookCompressionFile.async("text")
         : "";
 
-      const chapterFiles = Object.keys(zip.files)
-        .filter((path) => path.startsWith("chapters/") && path.toLowerCase().endsWith(".md"))
+      const chapterPrefix = `${rootPrefix}chapters/`;
+      const chapterFiles = allPaths
+        .filter((path) => path.startsWith(chapterPrefix) && path.toLowerCase().endsWith(".md"))
         .sort((a, b) => extractChapterIndex(a) - extractChapterIndex(b) || a.localeCompare(b));
 
       const summaryMap = new Map<number, string>();
