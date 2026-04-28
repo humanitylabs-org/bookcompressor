@@ -11,15 +11,9 @@ import { DEFAULT_PROMPT_CONFIG } from "@/lib/prompts";
 import type { DetailLevel, PromptConfig } from "@/lib/prompts";
 
 const DEFAULT_BASELINE_MODEL = "anthropic/claude-haiku-4.5";
-const DEFAULT_MODEL_ROUTING = {
-  passOneModel: "anthropic/claude-3.5-haiku",
-  passTwoModel: "anthropic/claude-3.5-haiku",
-  passThreeModel: DEFAULT_BASELINE_MODEL,
-  synthesisModel: DEFAULT_BASELINE_MODEL,
-};
 
-const SETTINGS_STORAGE_KEY = "book-compressor.settings.v2";
-const RUN_STORAGE_KEY = "book-compressor.run.v2";
+const SETTINGS_STORAGE_KEY = "book-compressor.settings.v3";
+const RUN_STORAGE_KEY = "book-compressor.run.v3";
 
 type ParsedChapter = {
   chapterIndex: number;
@@ -31,6 +25,7 @@ type ParsedChapter = {
 type ParsedBook = {
   bookTitle: string;
   chapters: ParsedChapter[];
+  detectionMethod: string;
 };
 
 type ChapterStatus = "queued" | "running" | "done" | "failed";
@@ -40,20 +35,10 @@ type ChapterResult = {
   chapterTitle: string;
   status: ChapterStatus;
   finalSummary?: string;
-  passOne?: string;
-  passTwo?: string;
-  passThree?: string;
   truncated?: boolean;
   originalChars?: number;
   processedChars?: number;
   error?: string;
-};
-
-type ModelRouting = {
-  passOneModel: string;
-  passTwoModel: string;
-  passThreeModel: string;
-  synthesisModel: string;
 };
 
 type PricingMap = Record<
@@ -67,7 +52,6 @@ type PricingMap = Record<
 type PreRunEstimate = {
   chapterCount: number;
   callCount: number;
-  selectedPassCount: number;
   approxCostUsd: number | null;
   missingPricingModels: string[];
 };
@@ -77,14 +61,10 @@ const PROMPT_FIELD_META: Array<{
   label: string;
   rows: number;
 }> = [
-  { key: "passOneSystem", label: "Pass 1 System Prompt", rows: 3 },
-  { key: "passOneUser", label: "Pass 1 User Prompt", rows: 10 },
-  { key: "passTwoSystem", label: "Pass 2 System Prompt", rows: 3 },
-  { key: "passTwoUser", label: "Pass 2 User Prompt", rows: 10 },
-  { key: "passThreeSystem", label: "Pass 3 System Prompt", rows: 3 },
-  { key: "passThreeUser", label: "Pass 3 User Prompt", rows: 9 },
-  { key: "bookSystem", label: "Book Synthesis System Prompt", rows: 3 },
-  { key: "bookUser", label: "Book Synthesis User Prompt", rows: 10 },
+  { key: "chapterSystem", label: "Chapter System Prompt", rows: 8 },
+  { key: "chapterUser", label: "Chapter User Prompt", rows: 14 },
+  { key: "bookSystem", label: "Book Synthesis System Prompt", rows: 6 },
+  { key: "bookUser", label: "Book Synthesis User Prompt", rows: 14 },
 ];
 
 function cleanText(input: string): string {
@@ -131,45 +111,14 @@ function statusClass(status: ChapterStatus): string {
   return "badge badge--queued";
 }
 
-function parsePassCount(value: number): 1 | 2 | 3 {
-  if (value === 2 || value === 3) return value;
-  return 1;
-}
-
 function charsToTokens(charCount: number): number {
   return Math.max(1, Math.ceil(charCount / 4));
 }
 
 function completionTargets(detailLevel: DetailLevel) {
-  if (detailLevel === "tight") {
-    return { passOne: 320, passTwo: 260, passThree: 320, synthesis: 1100 };
-  }
-  if (detailLevel === "deep") {
-    return { passOne: 820, passTwo: 620, passThree: 820, synthesis: 1900 };
-  }
-  return { passOne: 560, passTwo: 420, passThree: 560, synthesis: 1400 };
-}
-
-function resolveActiveModels(
-  baselineModel: string,
-  useAdvancedRouting: boolean,
-  modelRouting: ModelRouting,
-) {
-  if (!useAdvancedRouting) {
-    return {
-      passOneModel: baselineModel,
-      passTwoModel: baselineModel,
-      passThreeModel: baselineModel,
-      synthesisModel: baselineModel,
-    };
-  }
-
-  return {
-    passOneModel: modelRouting.passOneModel.trim() || baselineModel,
-    passTwoModel: modelRouting.passTwoModel.trim() || baselineModel,
-    passThreeModel: modelRouting.passThreeModel.trim() || baselineModel,
-    synthesisModel: modelRouting.synthesisModel.trim() || baselineModel,
-  };
+  if (detailLevel === "tight") return { chapter: 1100, synthesis: 1800 };
+  if (detailLevel === "deep") return { chapter: 3500, synthesis: 3500 };
+  return { chapter: 2100, synthesis: 2400 };
 }
 
 async function postJsonWithTimeout<TPayload, TResult>(
@@ -226,6 +175,240 @@ async function postJsonWithTimeout<TPayload, TResult>(
   }
 }
 
+type SpineDoc = {
+  href: string;
+  resolvedPath: string;
+  bodyText: string;
+  heading: string;
+};
+
+type TocEntry = {
+  title: string;
+  href: string;
+  depth: number;
+};
+
+const FRONT_BACK_MATTER_PATTERNS = [
+  /^cover$/i,
+  /^title\s*page$/i,
+  /^copyright/i,
+  /^dedication$/i,
+  /^acknowled?gments?$/i,
+  /^contents?$/i,
+  /^table\s+of\s+contents$/i,
+  /^bibliography$/i,
+  /^references?$/i,
+  /^index$/i,
+  /^notes?$/i,
+  /^endnotes?$/i,
+  /^glossary$/i,
+  /^about\s+the\s+author/i,
+  /^also\s+by/i,
+  /^praise\s+for/i,
+  /^epigraph$/i,
+  /^colophon$/i,
+];
+
+function isFrontOrBackMatter(title: string): boolean {
+  const trimmed = title.trim();
+  if (!trimmed) return false;
+  return FRONT_BACK_MATTER_PATTERNS.some((pattern) => pattern.test(trimmed));
+}
+
+function stripHrefFragment(href: string): string {
+  const hashIndex = href.indexOf("#");
+  return hashIndex >= 0 ? href.slice(0, hashIndex) : href;
+}
+
+function parseNavXhtml(navXml: string, parser: DOMParser): TocEntry[] {
+  const doc = parser.parseFromString(navXml, "application/xhtml+xml");
+  const navs = Array.from(doc.getElementsByTagName("nav"));
+  const tocNav =
+    navs.find((node) => (node.getAttribute("epub:type") || "").toLowerCase().includes("toc")) ||
+    navs[0];
+
+  if (!tocNav) return [];
+
+  const entries: TocEntry[] = [];
+
+  const walk = (list: Element, depth: number) => {
+    Array.from(list.children).forEach((li) => {
+      if (li.tagName.toLowerCase() !== "li") return;
+
+      const anchor = Array.from(li.children).find(
+        (child) => child.tagName.toLowerCase() === "a",
+      ) as HTMLAnchorElement | undefined;
+      const span = Array.from(li.children).find(
+        (child) => child.tagName.toLowerCase() === "span",
+      ) as HTMLElement | undefined;
+
+      const href = anchor?.getAttribute("href") || "";
+      const title = cleanText(anchor?.textContent || span?.textContent || "");
+
+      if (href) entries.push({ title, href, depth });
+
+      const nestedList = Array.from(li.children).find(
+        (child) => child.tagName.toLowerCase() === "ol" || child.tagName.toLowerCase() === "ul",
+      );
+      if (nestedList) walk(nestedList, depth + 1);
+    });
+  };
+
+  const rootList = Array.from(tocNav.children).find(
+    (child) => child.tagName.toLowerCase() === "ol" || child.tagName.toLowerCase() === "ul",
+  );
+
+  if (rootList) walk(rootList, 1);
+
+  return entries;
+}
+
+function parseTocNcx(ncxXml: string, parser: DOMParser): TocEntry[] {
+  const doc = parser.parseFromString(ncxXml, "application/xml");
+  const navMap = doc.getElementsByTagName("navMap")[0];
+  if (!navMap) return [];
+
+  const entries: TocEntry[] = [];
+
+  const walk = (parent: Element, depth: number) => {
+    Array.from(parent.children).forEach((node) => {
+      if (node.tagName.toLowerCase() !== "navpoint") return;
+
+      const labelText = cleanText(
+        node.getElementsByTagName("text")[0]?.textContent || "",
+      );
+      const contentEl = Array.from(node.children).find(
+        (child) => child.tagName.toLowerCase() === "content",
+      );
+      const href = contentEl?.getAttribute("src") || "";
+
+      if (href) entries.push({ title: labelText, href, depth });
+
+      walk(node, depth + 1);
+    });
+  };
+
+  walk(navMap, 1);
+  return entries;
+}
+
+function chooseChapterDepth(entries: TocEntry[]): number {
+  const byDepth = new Map<number, number>();
+  entries.forEach((entry) => {
+    byDepth.set(entry.depth, (byDepth.get(entry.depth) || 0) + 1);
+  });
+
+  const sorted = Array.from(byDepth.keys()).sort((a, b) => a - b);
+  for (const depth of sorted) {
+    const count = byDepth.get(depth) || 0;
+    if (count >= 3 && count <= 60) return depth;
+  }
+  return sorted[0] || 1;
+}
+
+function buildChaptersFromToc(
+  toc: TocEntry[],
+  spineDocs: SpineDoc[],
+  baseDir: string,
+): ParsedChapter[] {
+  const spineIndexByPath = new Map<string, number>();
+  spineDocs.forEach((doc, index) => {
+    if (!spineIndexByPath.has(doc.resolvedPath)) {
+      spineIndexByPath.set(doc.resolvedPath, index);
+    }
+  });
+
+  const chosenDepth = chooseChapterDepth(toc);
+  const topLevel = toc.filter((entry) => entry.depth === chosenDepth);
+
+  const boundaries = topLevel
+    .map((entry) => {
+      const resolved = resolveZipPath(baseDir, stripHrefFragment(entry.href));
+      const spineIndex = spineIndexByPath.get(resolved);
+      return spineIndex === undefined
+        ? null
+        : { title: entry.title, spineIndex };
+    })
+    .filter((entry): entry is { title: string; spineIndex: number } => entry !== null)
+    .sort((a, b) => a.spineIndex - b.spineIndex);
+
+  const chapters: ParsedChapter[] = [];
+  for (let i = 0; i < boundaries.length; i++) {
+    const startIndex = boundaries[i].spineIndex;
+    const endIndex = i + 1 < boundaries.length ? boundaries[i + 1].spineIndex : spineDocs.length;
+    const slice = spineDocs.slice(startIndex, endIndex);
+    const text = cleanText(slice.map((doc) => doc.bodyText).join("\n\n"));
+
+    const wordCount = text ? text.split(/\s+/).length : 0;
+    if (wordCount < 200) continue;
+
+    const title = boundaries[i].title || slice[0]?.heading || `Chapter ${chapters.length + 1}`;
+    if (isFrontOrBackMatter(title)) continue;
+
+    chapters.push({
+      chapterIndex: chapters.length + 1,
+      chapterTitle: title,
+      chapterText: text,
+      charCount: text.length,
+    });
+  }
+
+  return chapters;
+}
+
+const CHAPTER_HEADING_PATTERN = /^\s*(Chapter|Part|Book|Section)\s+([0-9IVXLCM]+|[A-Z][a-z]+)/i;
+
+function buildChaptersFromSpineHeadings(spineDocs: SpineDoc[]): ParsedChapter[] {
+  const groups: { title: string; docs: SpineDoc[] }[] = [];
+  let current: { title: string; docs: SpineDoc[] } | null = null;
+
+  for (const doc of spineDocs) {
+    const heading = doc.heading;
+    if (CHAPTER_HEADING_PATTERN.test(heading)) {
+      if (current) groups.push(current);
+      current = { title: heading, docs: [doc] };
+    } else if (current) {
+      current.docs.push(doc);
+    }
+  }
+  if (current) groups.push(current);
+
+  const chapters: ParsedChapter[] = [];
+  for (const group of groups) {
+    const text = cleanText(group.docs.map((doc) => doc.bodyText).join("\n\n"));
+    const wordCount = text ? text.split(/\s+/).length : 0;
+    if (wordCount < 200) continue;
+    if (isFrontOrBackMatter(group.title)) continue;
+
+    chapters.push({
+      chapterIndex: chapters.length + 1,
+      chapterTitle: group.title,
+      chapterText: text,
+      charCount: text.length,
+    });
+  }
+
+  return chapters;
+}
+
+function buildChaptersFromSpineFallback(spineDocs: SpineDoc[]): ParsedChapter[] {
+  const chapters: ParsedChapter[] = [];
+  for (const doc of spineDocs) {
+    const wordCount = doc.bodyText ? doc.bodyText.split(/\s+/).length : 0;
+    if (wordCount < 200) continue;
+    const title = doc.heading || `Section ${chapters.length + 1}`;
+    if (isFrontOrBackMatter(title)) continue;
+
+    chapters.push({
+      chapterIndex: chapters.length + 1,
+      chapterTitle: title,
+      chapterText: doc.bodyText,
+      charCount: doc.bodyText.length,
+    });
+  }
+  return chapters;
+}
+
 async function parseEpubInBrowser(file: File): Promise<ParsedBook> {
   const raw = await file.arrayBuffer();
   const zip = await JSZip.loadAsync(raw);
@@ -253,29 +436,29 @@ async function parseEpubInBrowser(file: File): Promise<ParsedBook> {
   const opfXml = await opfFile.async("text");
   const opfDoc = parser.parseFromString(opfXml, "application/xml");
   const bookTitle = extractXmlTitle(opfDoc) || file.name.replace(/\.epub$/i, "");
+  const baseDir = opfDirectory(rootfilePath);
 
   const manifest = new Map<
     string,
-    {
-      href: string;
-      mediaType: string;
-    }
+    { href: string; mediaType: string; properties: string }
   >();
+  let navManifestId = "";
+  let ncxManifestId = "";
 
   Array.from(opfDoc.getElementsByTagName("item")).forEach((item) => {
     const id = item.getAttribute("id");
     const href = item.getAttribute("href");
     const mediaType = item.getAttribute("media-type") || "";
-
+    const properties = item.getAttribute("properties") || "";
     if (!id || !href) return;
 
-    manifest.set(id, { href, mediaType });
+    manifest.set(id, { href, mediaType, properties });
+
+    if (properties.toLowerCase().includes("nav")) navManifestId = id;
+    if (mediaType === "application/x-dtbncx+xml") ncxManifestId = id;
   });
 
-  const baseDir = opfDirectory(rootfilePath);
-  const chapters: ParsedChapter[] = [];
-  let chapterCounter = 1;
-
+  const spineDocs: SpineDoc[] = [];
   const spineItems = Array.from(opfDoc.getElementsByTagName("itemref"));
   for (const spineItem of spineItems) {
     const idRef = spineItem.getAttribute("idref") || "";
@@ -294,41 +477,72 @@ async function parseEpubInBrowser(file: File): Promise<ParsedBook> {
     const chapterDoc = parser.parseFromString(chapterRaw, "application/xhtml+xml");
 
     const bodyText = cleanText(
-      chapterDoc.querySelector("body")?.textContent || chapterDoc.documentElement?.textContent || "",
+      chapterDoc.querySelector("body")?.textContent ||
+        chapterDoc.documentElement?.textContent ||
+        "",
     );
+    const heading = getChapterHeading(chapterDoc);
 
-    const wordCount = bodyText ? bodyText.split(/\s+/).length : 0;
-    if (wordCount < 60) continue;
+    spineDocs.push({ href: item.href, resolvedPath, bodyText, heading });
+  }
 
-    const chapterTitle = getChapterHeading(chapterDoc) || `Chapter ${chapterCounter}`;
+  if (!spineDocs.length) {
+    throw new Error("No valid HTML content found in this EPUB.");
+  }
 
-    chapters.push({
-      chapterIndex: chapterCounter,
-      chapterTitle,
-      chapterText: bodyText,
-      charCount: bodyText.length,
-    });
+  let toc: TocEntry[] = [];
+  let tocBaseDir = baseDir;
 
-    chapterCounter += 1;
+  const tocItem = manifest.get(navManifestId) || manifest.get(ncxManifestId);
+  if (tocItem) {
+    const tocResolved = resolveZipPath(baseDir, tocItem.href);
+    const tocFile = zip.file(tocResolved) || zip.file(tocItem.href);
+    if (tocFile) {
+      const tocXml = await tocFile.async("text");
+      tocBaseDir = opfDirectory(tocResolved);
+      toc =
+        manifest.get(navManifestId) === tocItem
+          ? parseNavXhtml(tocXml, parser)
+          : parseTocNcx(tocXml, parser);
+    }
+  }
+
+  let chapters: ParsedChapter[] = [];
+  let detectionMethod = "";
+
+  if (toc.length) {
+    chapters = buildChaptersFromToc(toc, spineDocs, tocBaseDir);
+    if (chapters.length >= 3) detectionMethod = "EPUB table of contents";
+  }
+
+  if (chapters.length < 3) {
+    const headingChapters = buildChaptersFromSpineHeadings(spineDocs);
+    if (headingChapters.length >= 3) {
+      chapters = headingChapters;
+      detectionMethod = "chapter heading pattern";
+    }
+  }
+
+  if (chapters.length < 1) {
+    chapters = buildChaptersFromSpineFallback(spineDocs);
+    detectionMethod = "spine fallback (one section per file)";
   }
 
   if (!chapters.length) {
     throw new Error("No valid chapter content found in this EPUB.");
   }
 
-  return { bookTitle, chapters };
+  return { bookTitle, chapters, detectionMethod };
 }
 
 export default function Home() {
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const [apiKey, setApiKey] = useState("");
-  const [baselineModel, setBaselineModel] = useState(DEFAULT_BASELINE_MODEL);
+  const [chapterModel, setChapterModel] = useState(DEFAULT_BASELINE_MODEL);
+  const [synthesisModel, setSynthesisModel] = useState(DEFAULT_BASELINE_MODEL);
   const [detailLevel, setDetailLevel] = useState<DetailLevel>("balanced");
   const [maxChapters, setMaxChapters] = useState("0");
-  const [passCount, setPassCount] = useState<1 | 2 | 3>(1);
-  const [useAdvancedRouting, setUseAdvancedRouting] = useState(false);
-  const [modelRouting, setModelRouting] = useState<ModelRouting>({ ...DEFAULT_MODEL_ROUTING });
 
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
   const [epubFile, setEpubFile] = useState<File | null>(null);
@@ -351,11 +565,6 @@ export default function Home() {
 
   const [pricingMap, setPricingMap] = useState<PricingMap>({});
 
-  const activeModels = useMemo(
-    () => resolveActiveModels(baselineModel, useAdvancedRouting, modelRouting),
-    [baselineModel, useAdvancedRouting, modelRouting],
-  );
-
   const completedCount = chapterResults.filter(
     (result) => result.status === "done" || result.status === "failed",
   ).length;
@@ -369,15 +578,6 @@ export default function Home() {
     (result) => result.status === "done" && result.finalSummary,
   );
 
-  const effectiveChapterCount = useMemo(() => {
-    if (!parsedBookCache) return 0;
-    const chapterLimit = Number(maxChapters);
-    if (Number.isFinite(chapterLimit) && chapterLimit > 0) {
-      return Math.min(chapterLimit, parsedBookCache.chapters.length);
-    }
-    return parsedBookCache.chapters.length;
-  }, [parsedBookCache, maxChapters]);
-
   const estimate = useMemo<PreRunEstimate | null>(() => {
     if (!parsedBookCache) return null;
 
@@ -389,40 +589,21 @@ export default function Home() {
 
     if (!selected.length) return null;
 
-    const calls = selected.length * passCount + 1;
     const targets = completionTargets(detailLevel);
-
     const buckets: Record<string, { prompt: number; completion: number }> = {};
     const add = (model: string, promptTokens: number, completionTokens: number) => {
-      if (!buckets[model]) {
-        buckets[model] = { prompt: 0, completion: 0 };
-      }
+      if (!buckets[model]) buckets[model] = { prompt: 0, completion: 0 };
       buckets[model].prompt += promptTokens;
       buckets[model].completion += completionTokens;
     };
 
     for (const chapter of selected) {
       const chapterTokens = charsToTokens(chapter.charCount);
-      const p1Prompt = chapterTokens + 420;
-      const p1Completion = targets.passOne;
-      add(activeModels.passOneModel, p1Prompt, p1Completion);
-
-      if (passCount >= 2) {
-        const p2Prompt = chapterTokens + p1Completion + 380;
-        const p2Completion = targets.passTwo;
-        add(activeModels.passTwoModel, p2Prompt, p2Completion);
-      }
-
-      if (passCount >= 3) {
-        const p3Prompt = targets.passOne + targets.passTwo + 320;
-        const p3Completion = targets.passThree;
-        add(activeModels.passThreeModel, p3Prompt, p3Completion);
-      }
+      add(chapterModel, chapterTokens + 600, targets.chapter);
     }
 
-    const perChapterOutput = passCount === 1 ? targets.passOne : passCount === 2 ? targets.passTwo : targets.passThree;
-    const synthesisPrompt = selected.length * perChapterOutput + 600;
-    add(activeModels.synthesisModel, synthesisPrompt, targets.synthesis);
+    const synthesisPrompt = selected.length * targets.chapter + 600;
+    add(synthesisModel, synthesisPrompt, targets.synthesis);
 
     let totalCost = 0;
     const missing: string[] = [];
@@ -433,19 +614,17 @@ export default function Home() {
         missing.push(model);
         continue;
       }
-
       totalCost += tokenUsage.prompt * pricing.prompt;
       totalCost += tokenUsage.completion * pricing.completion;
     }
 
     return {
       chapterCount: selected.length,
-      callCount: calls,
-      selectedPassCount: passCount,
+      callCount: selected.length + 1,
       approxCostUsd: missing.length ? null : totalCost,
       missingPricingModels: missing,
     };
-  }, [parsedBookCache, maxChapters, passCount, detailLevel, activeModels, pricingMap]);
+  }, [parsedBookCache, maxChapters, detailLevel, chapterModel, synthesisModel, pricingMap]);
 
   useEffect(() => {
     try {
@@ -453,28 +632,16 @@ export default function Home() {
       if (!raw) return;
 
       const parsed = JSON.parse(raw) as {
-        baselineModel?: string;
+        chapterModel?: string;
+        synthesisModel?: string;
         detailLevel?: DetailLevel;
         maxChapters?: string;
-        passCount?: number;
-        useAdvancedRouting?: boolean;
-        modelRouting?: Partial<ModelRouting>;
       };
 
-      if (parsed.baselineModel) setBaselineModel(parsed.baselineModel);
+      if (parsed.chapterModel) setChapterModel(parsed.chapterModel);
+      if (parsed.synthesisModel) setSynthesisModel(parsed.synthesisModel);
       if (parsed.detailLevel) setDetailLevel(parsed.detailLevel);
       if (typeof parsed.maxChapters === "string") setMaxChapters(parsed.maxChapters);
-      if (typeof parsed.passCount === "number") setPassCount(parsePassCount(parsed.passCount));
-      if (typeof parsed.useAdvancedRouting === "boolean") {
-        setUseAdvancedRouting(parsed.useAdvancedRouting);
-      }
-
-      if (parsed.modelRouting) {
-        setModelRouting((previous) => ({
-          ...previous,
-          ...parsed.modelRouting,
-        }));
-      }
     } catch {
       // ignore local storage parse failures
     }
@@ -485,18 +652,16 @@ export default function Home() {
       localStorage.setItem(
         SETTINGS_STORAGE_KEY,
         JSON.stringify({
-          baselineModel,
+          chapterModel,
+          synthesisModel,
           detailLevel,
           maxChapters,
-          passCount,
-          useAdvancedRouting,
-          modelRouting,
         }),
       );
     } catch {
       // ignore write failures
     }
-  }, [baselineModel, detailLevel, maxChapters, passCount, useAdvancedRouting, modelRouting]);
+  }, [chapterModel, synthesisModel, detailLevel, maxChapters]);
 
   useEffect(() => {
     try {
@@ -598,10 +763,6 @@ export default function Home() {
     setPromptConfig({ ...DEFAULT_PROMPT_CONFIG });
   };
 
-  const updateModelRouting = (field: keyof ModelRouting, value: string) => {
-    setModelRouting((previous) => ({ ...previous, [field]: value }));
-  };
-
   const clearOutput = () => {
     setBookTitle("");
     setChapterResults([]);
@@ -638,7 +799,9 @@ export default function Home() {
       const parsed = await parseEpubInBrowser(file);
       setParsedBookCache(parsed);
       setBookTitle((previous) => previous || parsed.bookTitle);
-      setStatusLine(`Ready. Detected ${parsed.chapters.length} chapters.`);
+      setStatusLine(
+        `Ready. Detected ${parsed.chapters.length} chapters via ${parsed.detectionMethod}.`,
+      );
     } catch (inspectionError) {
       const message =
         inspectionError instanceof Error ? inspectionError.message : "Failed to inspect EPUB.";
@@ -726,14 +889,9 @@ export default function Home() {
               chapterIndex: number;
               totalChapters: number;
               detailLevel: DetailLevel;
-              passCount: number;
               promptConfig: PromptConfig;
-              modelRouting: ModelRouting;
             },
             {
-              passOne?: string;
-              passTwo?: string;
-              passThree?: string;
               finalSummary?: string;
               truncated?: boolean;
               originalChars?: number;
@@ -743,24 +901,19 @@ export default function Home() {
             "/api/summarize-chapter",
             {
               apiKey: apiKey.trim(),
-              model: baselineModel.trim(),
+              model: chapterModel.trim() || DEFAULT_BASELINE_MODEL,
               chapterTitle: chapter.chapterTitle,
               chapterText: chapter.chapterText,
               chapterIndex: chapter.chapterIndex,
               totalChapters: selectedChapters.length,
               detailLevel,
-              passCount,
               promptConfig,
-              modelRouting: activeModels,
             },
             runController.signal,
           );
 
           updateChapter(chapter.chapterIndex, {
             status: "done",
-            passOne: payload.passOne,
-            passTwo: payload.passTwo,
-            passThree: payload.passThree,
             finalSummary: payload.finalSummary,
             truncated: payload.truncated,
             originalChars: payload.originalChars,
@@ -804,7 +957,6 @@ export default function Home() {
             bookTitle: string;
             chapterSummaries: Array<{ chapterIndex: number; chapterTitle: string; summary: string }>;
             promptConfig: PromptConfig;
-            modelRouting: ModelRouting;
           },
           {
             finalSynthesis?: string;
@@ -814,11 +966,10 @@ export default function Home() {
           "/api/synthesize-book",
           {
             apiKey: apiKey.trim(),
-            model: baselineModel.trim(),
+            model: synthesisModel.trim() || DEFAULT_BASELINE_MODEL,
             bookTitle: parsed.bookTitle,
             chapterSummaries: doneNow,
             promptConfig,
-            modelRouting: activeModels,
           },
           runController.signal,
         );
@@ -859,10 +1010,10 @@ export default function Home() {
     const summaryJson = {
       generatedAt: new Date().toISOString(),
       bookTitle,
-      baselineModel,
-      activeModels,
+      chapterModel,
+      synthesisModel,
       detailLevel,
-      passCount,
+      detectionMethod: parsedBookCache?.detectionMethod || null,
       chapters: successfulChapters.map((chapter) => ({
         chapterIndex: chapter.chapterIndex,
         chapterTitle: chapter.chapterTitle,
@@ -912,8 +1063,9 @@ export default function Home() {
         <section className="hero">
           <h1 className="hero__title">Book Compressor</h1>
           <p className="hero__sub">
-            Upload an EPUB, run chapter compression in configurable passes, and download
-            structured output. Processing is transient and designed without content persistence.
+            Upload an EPUB, get a Vajra-style walkthrough for every chapter plus a book-level
+            synthesis, and download as a viewer-ready ZIP. Processing is transient — content is
+            not persisted.
           </p>
           <div className="hero__actions">
             <Link className="button button--ghost button-link" href="/viewer">
@@ -926,7 +1078,8 @@ export default function Home() {
           <section className="card">
             <h2 className="card__title">Compression Setup</h2>
             <p className="card__subtitle">
-              Baseline defaults to Claude Haiku. Use Fast mode for lower cost.
+              Single-pass compression. Defaults to Claude Haiku 4.5; swap to Sonnet for richer
+              walkthroughs.
             </p>
 
             <form onSubmit={handleCompress}>
@@ -943,29 +1096,31 @@ export default function Home() {
               </label>
 
               <label className="field">
-                <span className="field__label">Baseline Model</span>
+                <span className="field__label">Chapter Model</span>
                 <input
                   className="input"
                   type="text"
-                  value={baselineModel}
-                  onChange={(event) => setBaselineModel(event.target.value)}
+                  value={chapterModel}
+                  onChange={(event) => setChapterModel(event.target.value)}
                   placeholder={DEFAULT_BASELINE_MODEL}
                 />
-                <p className="hint">Default: anthropic/claude-haiku-4.5</p>
+                <p className="hint">
+                  Used for every chapter walkthrough. Try anthropic/claude-sonnet-4.6 for richer
+                  prose.
+                </p>
               </label>
 
-              <div className="field">
-                <span className="field__label">Pass Mode</span>
-                <select
-                  className="select"
-                  value={passCount}
-                  onChange={(event) => setPassCount(parsePassCount(Number(event.target.value)))}
-                >
-                  <option value={1}>1 Pass (Fast, cheapest)</option>
-                  <option value={2}>2 Passes (Balanced)</option>
-                  <option value={3}>3 Passes (Deep quality)</option>
-                </select>
-              </div>
+              <label className="field">
+                <span className="field__label">Book Synthesis Model</span>
+                <input
+                  className="input"
+                  type="text"
+                  value={synthesisModel}
+                  onChange={(event) => setSynthesisModel(event.target.value)}
+                  placeholder={DEFAULT_BASELINE_MODEL}
+                />
+                <p className="hint">Used once at the end to synthesize the per-chapter walkthroughs.</p>
+              </label>
 
               <label className="field">
                 <span className="field__label">Detail Level</span>
@@ -1014,68 +1169,16 @@ export default function Home() {
 
               {estimate ? (
                 <div className="alert alert--info">
-                  <strong>Pre-run estimate:</strong> {estimate.chapterCount} chapters · {estimate.selectedPassCount} pass(es)
-                  · about {estimate.callCount} model calls.
+                  <strong>Pre-run estimate:</strong> {estimate.chapterCount} chapters · about{" "}
+                  {estimate.callCount} model calls (1 per chapter + 1 synthesis).
                   {estimate.approxCostUsd !== null ? (
                     <> Estimated cost: ~${estimate.approxCostUsd.toFixed(2)}.</>
                   ) : (
                     <> Cost unavailable for one or more selected models.</>
                   )}
-                  {estimate.callCount > 80 ? (
-                    <>
-                      {" "}High-call run detected. Consider lowering max chapters or using fewer passes.
-                    </>
+                  {estimate.chapterCount > 50 ? (
+                    <> High chapter count — consider lowering max chapters.</>
                   ) : null}
-                </div>
-              ) : null}
-
-              <label className="checkbox">
-                <input
-                  type="checkbox"
-                  checked={useAdvancedRouting}
-                  onChange={(event) => setUseAdvancedRouting(event.target.checked)}
-                />
-                <span>Enable advanced per-pass model routing</span>
-              </label>
-
-              {useAdvancedRouting ? (
-                <div className="prompt-grid" style={{ marginBottom: 14 }}>
-                  <label className="field">
-                    <span className="field__label">Pass 1 Model</span>
-                    <input
-                      className="input"
-                      type="text"
-                      value={modelRouting.passOneModel}
-                      onChange={(event) => updateModelRouting("passOneModel", event.target.value)}
-                    />
-                  </label>
-                  <label className="field">
-                    <span className="field__label">Pass 2 Model</span>
-                    <input
-                      className="input"
-                      type="text"
-                      value={modelRouting.passTwoModel}
-                      onChange={(event) => updateModelRouting("passTwoModel", event.target.value)}
-                    />
-                  </label>
-                  <label className="field">
-                    <span className="field__label">Pass 3 Model</span>
-                    <input
-                      className="input"
-                      type="text"
-                      value={modelRouting.passThreeModel}
-                      onChange={(event) => updateModelRouting("passThreeModel", event.target.value)}
-                    />
-                  </label>
-                  <label className="field">
-                    <span className="field__label">Book Synthesis Model</span>
-                    <input
-                      className="input"
-                      type="text"
-                      value={modelRouting.synthesisModel}
-                      onChange={(event) => updateModelRouting("synthesisModel", event.target.value)}
-                    />
-                  </label>
                 </div>
               ) : null}
 
@@ -1085,9 +1188,9 @@ export default function Home() {
                   Edit prompts for this run. Reloading the page resets prompt text to defaults.
                 </p>
                 <p className="prompt-vars">
-                  Placeholder variables: {"{{chapter_index}}"}, {"{{total_chapters}}"}, {"{{chapter_title}}"},{" "}
-                  {"{{target_length}}"}, {"{{chapter_text}}"}, {"{{pass_one_output}}"},{" "}
-                  {"{{pass_two_output}}"}, {"{{book_title}}"}, {"{{chapter_summaries}}"}
+                  Placeholder variables: {"{{chapter_index}}"}, {"{{total_chapters}}"},{" "}
+                  {"{{chapter_title}}"}, {"{{target_length}}"}, {"{{chapter_text}}"},{" "}
+                  {"{{book_title}}"}, {"{{chapter_summaries}}"}
                 </p>
                 <div className="button-row" style={{ marginBottom: 12 }}>
                   <button
@@ -1198,7 +1301,7 @@ export default function Home() {
 
             {!chapterResults.length ? (
               <div className="alert alert--info">
-                Start a run to see chapter-by-chapter output. Current mode: {passCount} pass(es).
+                Start a run to see chapter-by-chapter output.
               </div>
             ) : (
               <div className="chapter-list">

@@ -3,12 +3,8 @@ import type { OpenRouterMessage } from "@/lib/openrouter";
 export type DetailLevel = "tight" | "balanced" | "deep";
 
 export type PromptConfig = {
-  passOneSystem: string;
-  passOneUser: string;
-  passTwoSystem: string;
-  passTwoUser: string;
-  passThreeSystem: string;
-  passThreeUser: string;
+  chapterSystem: string;
+  chapterUser: string;
   bookSystem: string;
   bookUser: string;
 };
@@ -16,77 +12,71 @@ export type PromptConfig = {
 const MAX_PROMPT_LENGTH = 20_000;
 
 const detailTargets: Record<DetailLevel, string> = {
-  tight: "180-260 words",
-  balanced: "260-420 words",
-  deep: "420-700 words",
+  tight: "600-1000 words",
+  balanced: "1000-1800 words",
+  deep: "1800-3000 words",
 };
 
 export const DEFAULT_PROMPT_CONFIG: PromptConfig = {
-  passOneSystem:
-    "You are a precise nonfiction chapter compressor. Keep fidelity high. Do not invent claims. If uncertain, say uncertain.",
-  passOneUser: `Compress Chapter {{chapter_index}} of {{total_chapters}}.
-Title: {{chapter_title}}
-Target length: {{target_length}}
+  chapterSystem: `You are Vajra Compressor. You produce a faithful, plain-language walkthrough of a nonfiction chapter that can stand in for reading the chapter itself. You are not writing a preview, summary, or table of contents. You walk the reader through the actual ideas as the author makes them, in the order the author makes them.
 
-Return exactly these sections with markdown headings:
-## Core Thesis
-## Structural Outline
-## Key Ideas
-## Notable Evidence / Examples
-## Actionable Takeaways
-## Open Questions or Weak Spots
+Voice and rules:
+- Frame everything as what the author argues, claims, or shows. Never assert claims as bare fact.
+- Plain language. Define every technical term inline. Use analogies for abstract concepts.
+- Bold key terms, names, and load-bearing numbers.
+- Short paragraphs (2-3 sentences). Use bullets and sub-headers liberally.
+- Quote the chapter directly for load-bearing claims using > blockquote, sparingly but where wording matters.
+- Add inline > ⚠️ **AI Note:** when a claim needs context, is plausible but unverified, or feels like a manufacturer/author overclaim.
+- Add inline > 🔴 **Fact Check:** when a claim looks wrong or misleading.
+- Never add confirmatory notes ("this is correct"). Only flag concerns.
+- Do not invent claims. If the chapter does not say something, do not say it. If you are uncertain, say "uncertain".
+
+Success test: a reader who finishes your output should understand the chapter well enough to discuss it without opening the book.`,
+  chapterUser: `Walk the reader through Chapter {{chapter_index}} of {{total_chapters}}: "{{chapter_title}}".
+
+Target length: {{target_length}}. Use the full target. Falling short means you have skipped ideas the author developed.
+
+Structure your output exactly as:
+
+## In one paragraph
+A 3-5 sentence executive summary of the chapter's thesis and why it matters.
+
+## Walkthrough
+The full walkthrough beneath, with sub-headers (###) for each major move the author makes. This is the bulk of the output. Quote, define jargon, bold key terms, flag concerns inline.
+
+## What the author wants you to do
+A short bullet list of practical takeaways. Skip this section if the chapter offers no actionable guidance.
 
 Chapter text:
 {{chapter_text}}`,
-  passTwoSystem:
-    "You are a strict quality auditor. Your job is to find misses, overclaims, and distortion. Be concrete and terse.",
-  passTwoUser: `Audit this chapter summary for completeness and faithfulness.
+  bookSystem: `You are Vajra Compressor producing a book-level walkthrough from per-chapter walkthroughs. You are not writing a preview or chapter list. The reader should finish your output understanding the book's central argument and how the chapters build on each other, well enough to converse about it without having read the book.
 
-Chapter title: {{chapter_title}}
-
-Draft summary:
-{{pass_one_output}}
-
-Chapter text for verification:
-{{chapter_text}}
-
-Return exactly these sections:
-## Missing Important Points
-## Potential Distortions or Overclaims
-## Nuance That Should Be Added
-## Compression Quality Score (1-10)
-## Revision Guidance
-## Revised Chapter Compression`,
-  passThreeSystem:
-    "You are a synthesis editor. Produce a final chapter compression by integrating draft + critique. Keep it clear, faithful, and readable.",
-  passThreeUser: `Create the final chapter compression for "{{chapter_title}}".
-Target length: {{target_length}}
-
-Draft summary:
-{{pass_one_output}}
-
-Audit critique:
-{{pass_two_output}}
-
-Return exactly these sections:
-## Chapter Compression
-## Key Insights (Bullet List)
-## Practical Applications
-## What To Revisit In Full Text
-## Confidence Notes`,
-  bookSystem:
-    "You are a book-level synthesis writer. Build a coherent compression of the full book from chapter summaries only.",
+Voice and rules:
+- Frame everything as what the author argues. Plain language. Bold key terms.
+- Walk through the book's argument arc. Synthesize across chapters; do not just list them in order.
+- Quote sparingly but quote when the wording matters.
+- Inline > ⚠️ **AI Note:** and > 🔴 **Fact Check:** where warranted.
+- Do not invent claims. If the per-chapter walkthroughs do not establish something, do not assert it.`,
   bookUser: `Book title: {{book_title}}
 
-Use the chapter summaries below and produce:
-## Book Compression
-## Throughline Across Chapters
-## Major Frameworks / Models
-## Contradictions or Tensions
-## Best Action Steps (Top 10)
-## One-Page Executive Abstract
+Use the per-chapter walkthroughs below to produce:
 
-Chapter summaries:
+## In one paragraph
+4-7 sentence executive summary capturing the book's central thesis and its single most important conclusion.
+
+## The argument arc
+A walkthrough of how the author's argument develops across the book. Group chapters into the moves they make together. Do not simply list chapters in order.
+
+## Frameworks and concepts
+The major reusable models the author introduces. Define each in plain language and note which chapter introduces it.
+
+## Tensions and weak spots
+Internal contradictions, unsupported leaps, or claims that drew an AI Note / Fact Check during chapter compression.
+
+## What to take away
+The 5-10 most actionable conclusions for a reader.
+
+Per-chapter walkthroughs:
 {{chapter_summaries}}`,
 };
 
@@ -101,12 +91,8 @@ export function mergePromptConfig(overrides?: Partial<PromptConfig>): PromptConf
   const source = overrides || {};
 
   return {
-    passOneSystem: normalizePrompt(source.passOneSystem, DEFAULT_PROMPT_CONFIG.passOneSystem),
-    passOneUser: normalizePrompt(source.passOneUser, DEFAULT_PROMPT_CONFIG.passOneUser),
-    passTwoSystem: normalizePrompt(source.passTwoSystem, DEFAULT_PROMPT_CONFIG.passTwoSystem),
-    passTwoUser: normalizePrompt(source.passTwoUser, DEFAULT_PROMPT_CONFIG.passTwoUser),
-    passThreeSystem: normalizePrompt(source.passThreeSystem, DEFAULT_PROMPT_CONFIG.passThreeSystem),
-    passThreeUser: normalizePrompt(source.passThreeUser, DEFAULT_PROMPT_CONFIG.passThreeUser),
+    chapterSystem: normalizePrompt(source.chapterSystem, DEFAULT_PROMPT_CONFIG.chapterSystem),
+    chapterUser: normalizePrompt(source.chapterUser, DEFAULT_PROMPT_CONFIG.chapterUser),
     bookSystem: normalizePrompt(source.bookSystem, DEFAULT_PROMPT_CONFIG.bookSystem),
     bookUser: normalizePrompt(source.bookUser, DEFAULT_PROMPT_CONFIG.bookUser),
   };
@@ -122,7 +108,7 @@ function fillTemplate(template: string, values: Record<string, string | number>)
   return output;
 }
 
-export function buildPassOneMessages(input: {
+export function buildChapterMessages(input: {
   config: PromptConfig;
   chapterTitle: string;
   chapterText: string;
@@ -133,62 +119,16 @@ export function buildPassOneMessages(input: {
   return [
     {
       role: "system",
-      content: input.config.passOneSystem,
+      content: input.config.chapterSystem,
     },
     {
       role: "user",
-      content: fillTemplate(input.config.passOneUser, {
+      content: fillTemplate(input.config.chapterUser, {
         chapter_index: input.chapterIndex,
         total_chapters: input.totalChapters,
         chapter_title: input.chapterTitle,
         target_length: detailTargets[input.detailLevel],
         chapter_text: input.chapterText,
-      }),
-    },
-  ];
-}
-
-export function buildPassTwoMessages(input: {
-  config: PromptConfig;
-  chapterTitle: string;
-  chapterText: string;
-  passOneOutput: string;
-}): OpenRouterMessage[] {
-  return [
-    {
-      role: "system",
-      content: input.config.passTwoSystem,
-    },
-    {
-      role: "user",
-      content: fillTemplate(input.config.passTwoUser, {
-        chapter_title: input.chapterTitle,
-        chapter_text: input.chapterText,
-        pass_one_output: input.passOneOutput,
-      }),
-    },
-  ];
-}
-
-export function buildPassThreeMessages(input: {
-  config: PromptConfig;
-  chapterTitle: string;
-  passOneOutput: string;
-  passTwoOutput: string;
-  detailLevel: DetailLevel;
-}): OpenRouterMessage[] {
-  return [
-    {
-      role: "system",
-      content: input.config.passThreeSystem,
-    },
-    {
-      role: "user",
-      content: fillTemplate(input.config.passThreeUser, {
-        chapter_title: input.chapterTitle,
-        target_length: detailTargets[input.detailLevel],
-        pass_one_output: input.passOneOutput,
-        pass_two_output: input.passTwoOutput,
       }),
     },
   ];

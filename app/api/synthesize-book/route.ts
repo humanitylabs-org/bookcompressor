@@ -4,13 +4,6 @@ import { buildBookSynthesisMessages, mergePromptConfig, PromptConfig } from "@/l
 
 const DEFAULT_MODEL = "anthropic/claude-haiku-4.5";
 
-type ModelRouting = {
-  passOneModel?: string;
-  passTwoModel?: string;
-  passThreeModel?: string;
-  synthesisModel?: string;
-};
-
 type SynthesisRequest = {
   apiKey?: string;
   model?: string;
@@ -21,7 +14,6 @@ type SynthesisRequest = {
     summary: string;
   }>;
   promptConfig?: Partial<PromptConfig>;
-  modelRouting?: Partial<ModelRouting>;
 };
 
 function sanitizeModel(value: unknown, fallback: string): string {
@@ -43,8 +35,7 @@ export async function POST(request: Request) {
   }
 
   const apiKey = body.apiKey?.trim();
-  const baseModel = sanitizeModel(body.model, DEFAULT_MODEL);
-  const synthesisModel = sanitizeModel(body.modelRouting?.synthesisModel, baseModel);
+  const synthesisModel = sanitizeModel(body.model, DEFAULT_MODEL);
   const bookTitle = body.bookTitle?.trim() || "Untitled Book";
   const chapterSummaries = Array.isArray(body.chapterSummaries)
     ? body.chapterSummaries.filter((item) => item?.summary && item?.chapterTitle)
@@ -68,8 +59,8 @@ export async function POST(request: Request) {
         bookTitle,
         chapterSummaries,
       }),
-      temperature: 0.35,
-      maxTokens: 1900,
+      temperature: 0.4,
+      maxTokens: 6000,
     });
 
     return NextResponse.json({

@@ -1,11 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import JSZip from "jszip";
 import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSanitize from "rehype-sanitize";
+
+const EDGE_SWIPE_TRIGGER_PX = 60;
+const EDGE_START_ZONE_PX = 28;
+const CLOSE_SWIPE_TRIGGER_PX = 60;
 
 type ViewerChapter = {
   id: string;
@@ -68,7 +72,10 @@ export default function ViewerPage() {
   const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  const edgeTouchRef = useRef<{ x: number; y: number; tracking: boolean } | null>(null);
+  const drawerTouchRef = useRef<{ x: number; y: number; tracking: boolean } | null>(null);
 
   const selectedChapterIndex = useMemo(
     () => chapters.findIndex((chapter) => chapter.id === selectedChapterId),
@@ -82,6 +89,80 @@ export default function ViewerPage() {
     selectedChapterIndex >= 0 && selectedChapterIndex < chapters.length - 1
       ? chapters[selectedChapterIndex + 1]
       : null;
+
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [drawerOpen]);
+
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const handler = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setDrawerOpen(false);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [drawerOpen]);
+
+  const handlePageTouchStart = (event: React.TouchEvent) => {
+    if (drawerOpen) return;
+    const touch = event.touches[0];
+    if (!touch) return;
+    if (touch.clientX > EDGE_START_ZONE_PX) return;
+    edgeTouchRef.current = { x: touch.clientX, y: touch.clientY, tracking: true };
+  };
+
+  const handlePageTouchMove = (event: React.TouchEvent) => {
+    const start = edgeTouchRef.current;
+    if (!start?.tracking) return;
+    const touch = event.touches[0];
+    if (!touch) return;
+    const deltaX = touch.clientX - start.x;
+    const deltaY = Math.abs(touch.clientY - start.y);
+    if (deltaY > Math.abs(deltaX)) {
+      edgeTouchRef.current = null;
+      return;
+    }
+    if (deltaX >= EDGE_SWIPE_TRIGGER_PX) {
+      setDrawerOpen(true);
+      edgeTouchRef.current = null;
+    }
+  };
+
+  const handlePageTouchEnd = () => {
+    edgeTouchRef.current = null;
+  };
+
+  const handleDrawerTouchStart = (event: React.TouchEvent) => {
+    const touch = event.touches[0];
+    if (!touch) return;
+    drawerTouchRef.current = { x: touch.clientX, y: touch.clientY, tracking: true };
+  };
+
+  const handleDrawerTouchMove = (event: React.TouchEvent) => {
+    const start = drawerTouchRef.current;
+    if (!start?.tracking) return;
+    const touch = event.touches[0];
+    if (!touch) return;
+    const deltaX = touch.clientX - start.x;
+    const deltaY = Math.abs(touch.clientY - start.y);
+    if (deltaY > Math.abs(deltaX)) {
+      drawerTouchRef.current = null;
+      return;
+    }
+    if (deltaX <= -CLOSE_SWIPE_TRIGGER_PX) {
+      setDrawerOpen(false);
+      drawerTouchRef.current = null;
+    }
+  };
+
+  const handleDrawerTouchEnd = () => {
+    drawerTouchRef.current = null;
+  };
 
   const handleZipUpload = async (file: File | null) => {
     if (!file) return;
@@ -154,7 +235,7 @@ export default function ViewerPage() {
       setBookCompression(compressionContent);
       setChapters(loadedChapters);
       setSelectedChapterId(loadedChapters[0]?.id || null);
-      setMobileMenuOpen(false);
+      setDrawerOpen(false);
     } catch (uploadError) {
       const message = uploadError instanceof Error ? uploadError.message : "Failed to parse ZIP.";
       setError(message);
@@ -163,10 +244,35 @@ export default function ViewerPage() {
     }
   };
 
+  const selectChapter = (id: string | null) => {
+    setSelectedChapterId(id);
+    setDrawerOpen(false);
+  };
+
+  const hasContent = chapters.length > 0 || bookCompression.length > 0;
+
   return (
-    <div className="bcv-page">
+    <div
+      className="bcv-page"
+      onTouchStart={handlePageTouchStart}
+      onTouchMove={handlePageTouchMove}
+      onTouchEnd={handlePageTouchEnd}
+    >
       <header className="bcv-header">
         <div className="bcv-header__left">
+          {hasContent ? (
+            <button
+              className="bcv-hamburger"
+              type="button"
+              aria-label="Open chapters"
+              aria-expanded={drawerOpen}
+              onClick={() => setDrawerOpen(true)}
+            >
+              <span />
+              <span />
+              <span />
+            </button>
+          ) : null}
           <h1 className="bcv-title">Book Compressor Viewer</h1>
           <p className="bcv-subtitle">Upload a result ZIP and browse chapters beautifully.</p>
         </div>
@@ -192,7 +298,7 @@ export default function ViewerPage() {
 
       {error ? <div className="bcv-alert bcv-alert--error">{error}</div> : null}
 
-      {!chapters.length && !bookCompression ? (
+      {!hasContent ? (
         <section className="bcv-empty">
           <p>Upload the ZIP produced by Book Compressor to start viewing.</p>
           <p className="bcv-empty__hint">
@@ -202,22 +308,22 @@ export default function ViewerPage() {
         </section>
       ) : (
         <div className="bcv-shell">
-          <button
-            className="bcv-mobile-toggle"
-            type="button"
-            onClick={() => setMobileMenuOpen((open) => !open)}
-          >
-            {mobileMenuOpen ? "Close Chapters" : "Open Chapters"}
-          </button>
+          <div
+            className={`bcv-backdrop ${drawerOpen ? "bcv-backdrop--visible" : ""}`}
+            onClick={() => setDrawerOpen(false)}
+            aria-hidden={!drawerOpen}
+          />
 
-          <aside className={`bcv-sidebar ${mobileMenuOpen ? "bcv-sidebar--open" : ""}`}>
+          <aside
+            className={`bcv-sidebar ${drawerOpen ? "bcv-sidebar--open" : ""}`}
+            onTouchStart={handleDrawerTouchStart}
+            onTouchMove={handleDrawerTouchMove}
+            onTouchEnd={handleDrawerTouchEnd}
+          >
             <button
               className={`bcv-nav-item ${selectedChapterId === null ? "bcv-nav-item--active" : ""}`}
               type="button"
-              onClick={() => {
-                setSelectedChapterId(null);
-                setMobileMenuOpen(false);
-              }}
+              onClick={() => selectChapter(null)}
             >
               <span>Book Compression</span>
             </button>
@@ -229,10 +335,7 @@ export default function ViewerPage() {
                   key={chapter.id}
                   className={`bcv-nav-item ${chapter.id === selectedChapterId ? "bcv-nav-item--active" : ""}`}
                   type="button"
-                  onClick={() => {
-                    setSelectedChapterId(chapter.id);
-                    setMobileMenuOpen(false);
-                  }}
+                  onClick={() => selectChapter(chapter.id)}
                 >
                   <span className="bcv-nav-item__index">{chapter.index}</span>
                   <span className="bcv-nav-item__title">{chapter.title}</span>
