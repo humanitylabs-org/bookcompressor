@@ -666,6 +666,21 @@ a {
   margin: 0 0 0.9em;
 }
 
+.bcv-ai-note {
+  margin: 1em 0 1.15em;
+  padding: 12px 14px;
+  border-left: 3px solid #d4a843;
+  border-radius: 8px;
+  background: rgba(212, 168, 67, 0.12);
+  color: #f0e7cf;
+  line-height: 1.65;
+}
+
+.bcv-ai-note strong {
+  color: #ffd978;
+  font-weight: 600;
+}
+
 .bcv-markdown ul,
 .bcv-markdown ol {
   margin: 0 0 1em;

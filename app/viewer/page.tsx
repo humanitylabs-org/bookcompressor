@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import JSZip from "jszip";
 import Link from "next/link";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSanitize from "rehype-sanitize";
 
@@ -63,6 +63,30 @@ function titleFromFilename(filename: string): string {
     .replace(/\s+/g, " ")
     .trim() || base;
 }
+
+function nodeText(node: ReactNode): string {
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(nodeText).join("");
+  if (node && typeof node === "object" && "props" in node) {
+    const maybe = node as { props?: { children?: ReactNode } };
+    return nodeText(maybe.props?.children ?? "");
+  }
+  return "";
+}
+
+const viewerMarkdownComponents: Components = {
+  p({ children }) {
+    const text = nodeText(children).trim().toLowerCase();
+    if (
+      text.startsWith("⚠️ ai note:") ||
+      text.startsWith("⚠ ai note:") ||
+      text.startsWith("ai note:")
+    ) {
+      return <aside className="bcv-ai-note">{children}</aside>;
+    }
+    return <p>{children}</p>;
+  },
+};
 
 export default function ViewerPage() {
   const [bookTitle, setBookTitle] = useState("");
@@ -357,14 +381,12 @@ export default function ViewerPage() {
 
             {selectedChapter ? (
               <>
-                <section className="bcv-main__heading">
-                  <h3>
-                    Chapter {selectedChapter.index}: {selectedChapter.title}
-                  </h3>
-                </section>
-
                 <article className="bcv-markdown">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    rehypePlugins={[rehypeSanitize]}
+                    components={viewerMarkdownComponents}
+                  >
                     {selectedChapter.content}
                   </ReactMarkdown>
                 </article>
@@ -397,7 +419,11 @@ export default function ViewerPage() {
               </>
             ) : (
               <article className="bcv-markdown">
-                <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  rehypePlugins={[rehypeSanitize]}
+                  components={viewerMarkdownComponents}
+                >
                   {bookCompression || "No book-compression.md content available in this ZIP."}
                 </ReactMarkdown>
               </article>
