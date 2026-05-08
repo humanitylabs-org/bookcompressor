@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { promisify } from "node:util";
 import { callOpenRouter } from "@/lib/openrouter";
 
@@ -36,7 +37,33 @@ type OpenClawModelRunPayload = {
   error?: string;
 };
 
+type OpenClawAgentRunPayload = {
+  status?: string;
+  error?: string;
+  payloads?: Array<{
+    text?: string | null;
+  }>;
+  meta?: {
+    agentMeta?: {
+      model?: string;
+    };
+  };
+  result?: {
+    payloads?: Array<{
+      text?: string | null;
+    }>;
+    finalAssistantVisibleText?: string;
+    finalAssistantRawText?: string;
+    meta?: {
+      agentMeta?: {
+        model?: string;
+      };
+    };
+  };
+};
+
 const DEFAULT_PROVIDER = "openclaw";
+const DEFAULT_TIMEOUT_MS = 300_000;
 
 function resolveProvider(): "openclaw" | "openrouter" {
   const raw = (process.env.BOOK_COMPRESSOR_INFERENCE_PROVIDER || DEFAULT_PROVIDER)
@@ -67,17 +94,45 @@ function buildPrompt(messages: InferenceMessage[]): string {
   ].join("\n");
 }
 
-function parseOpenClawModelRunOutput(stdout: string): OpenClawModelRunPayload {
+function parseJsonOutput<T>(stdout: string, contextLabel: string): T {
   const trimmed = stdout.trim();
   if (!trimmed) {
-    throw new Error("OpenClaw inference returned empty output.");
+    throw new Error(`${contextLabel} returned empty output.`);
   }
 
   try {
-    return JSON.parse(trimmed) as OpenClawModelRunPayload;
+    return JSON.parse(trimmed) as T;
   } catch {
-    throw new Error(`OpenClaw inference returned non-JSON output: ${trimmed.slice(0, 240)}`);
+    const firstBrace = trimmed.indexOf("{");
+    const lastBrace = trimmed.lastIndexOf("}");
+
+    if (firstBrace >= 0 && lastBrace > firstBrace) {
+      const candidate = trimmed.slice(firstBrace, lastBrace + 1);
+      try {
+        return JSON.parse(candidate) as T;
+      } catch {
+        // fall through to explicit error below
+      }
+    }
+
+    throw new Error(`${contextLabel} returned non-JSON output: ${trimmed.slice(0, 240)}`);
   }
+}
+
+function parseOpenClawModelRunOutput(stdout: string): OpenClawModelRunPayload {
+  return parseJsonOutput<OpenClawModelRunPayload>(stdout, "OpenClaw inference");
+}
+
+function parseOpenClawAgentRunOutput(stdout: string): OpenClawAgentRunPayload {
+  return parseJsonOutput<OpenClawAgentRunPayload>(stdout, "OpenClaw agent run");
+}
+
+function firstTextOutput(
+  outputs?: Array<{
+    text?: string | null;
+  }>,
+): string | undefined {
+  return outputs?.find((entry) => typeof entry?.text === "string" && entry.text.trim())?.text?.trim();
 }
 
 async function callViaOpenClawGateway({
@@ -92,12 +147,15 @@ async function callViaOpenClawGateway({
     args.push("--model", requestedModel);
   }
 
-  const timeoutMs = Number(process.env.BOOK_COMPRESSOR_AI_TIMEOUT_MS || 300_000);
+  const configuredTimeout = Number(process.env.BOOK_COMPRESSOR_AI_TIMEOUT_MS || DEFAULT_TIMEOUT_MS);
+  const timeoutMs = Number.isFinite(configuredTimeout) && configuredTimeout > 0
+    ? configuredTimeout
+    : DEFAULT_TIMEOUT_MS;
 
   try {
     const { stdout } = await execFileAsync("openclaw", args, {
       maxBuffer: 4 * 1024 * 1024,
-      timeout: Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 300_000,
+      timeout: timeoutMs,
       env: {
         ...process.env,
         NO_COLOR: "1",
@@ -119,6 +177,84 @@ async function callViaOpenClawGateway({
   } catch (error) {
     const detail = error instanceof Error ? error.message : "Unknown inference error.";
     throw new Error(`OpenClaw inference failed: ${detail}`);
+  }
+}
+
+async function callViaOpenClawAgentLocal({
+  model,
+  messages,
+}: InferenceCallOptions): Promise<InferenceResult> {
+  const prompt = buildPrompt(messages);
+  const requestedModel = normalizeModel(model);
+
+  const configuredTimeout = Number(process.env.BOOK_COMPRESSOR_AI_TIMEOUT_MS || DEFAULT_TIMEOUT_MS);
+  const timeoutMs = Number.isFinite(configuredTimeout) && configuredTimeout > 0
+    ? configuredTimeout
+    : DEFAULT_TIMEOUT_MS;
+  const timeoutSeconds = Math.max(30, Math.ceil(timeoutMs / 1000));
+
+  const args = [
+    "agent",
+    "--local",
+    "--json",
+    "--session-id",
+    `bookcompressor-${randomUUID()}`,
+    "--message",
+    prompt,
+    "--timeout",
+    String(timeoutSeconds),
+  ];
+
+  if (requestedModel) {
+    args.push("--model", requestedModel);
+  }
+
+  try {
+    const { stdout } = await execFileAsync("openclaw", args, {
+      maxBuffer: 8 * 1024 * 1024,
+      timeout: timeoutMs + 30_000,
+      env: {
+        ...process.env,
+        NO_COLOR: "1",
+      },
+    });
+
+    const payload = parseOpenClawAgentRunOutput(stdout);
+    const text =
+      firstTextOutput(payload.result?.payloads) ||
+      firstTextOutput(payload.payloads) ||
+      payload.result?.finalAssistantVisibleText?.trim() ||
+      payload.result?.finalAssistantRawText?.trim();
+
+    if (!text) {
+      throw new Error(payload.error || "OpenClaw agent run returned no text output.");
+    }
+
+    return {
+      text,
+      provider: "openclaw",
+      modelUsed: payload.result?.meta?.agentMeta?.model || payload.meta?.agentMeta?.model || requestedModel,
+    };
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "Unknown inference error.";
+    throw new Error(`OpenClaw local-agent inference failed: ${detail}`);
+  }
+}
+
+async function callViaOpenClaw(options: InferenceCallOptions): Promise<InferenceResult> {
+  try {
+    return await callViaOpenClawAgentLocal(options);
+  } catch (localError) {
+    try {
+      return await callViaOpenClawGateway(options);
+    } catch (gatewayError) {
+      const localDetail = localError instanceof Error ? localError.message : "Unknown local-agent error.";
+      const gatewayDetail =
+        gatewayError instanceof Error ? gatewayError.message : "Unknown gateway inference error.";
+      throw new Error(
+        `OpenClaw inference failed. Local-agent error: ${localDetail} | Gateway error: ${gatewayDetail}`,
+      );
+    }
   }
 }
 
@@ -153,6 +289,5 @@ export async function callInference(options: InferenceCallOptions): Promise<Infe
     return callViaOpenRouter(options);
   }
 
-  return callViaOpenClawGateway(options);
+  return callViaOpenClaw(options);
 }
-
