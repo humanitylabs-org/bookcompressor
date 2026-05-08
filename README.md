@@ -68,6 +68,9 @@ Viewer:
 ## Standard lifecycle scripts
 
 ```bash
+# prerequisite check (tailscale + openclaw + model smoke + port)
+./scripts/prereq-check.sh
+
 # install deps
 ./scripts/install.sh
 
@@ -86,6 +89,10 @@ Viewer:
 # merge upstream main into your fork branch
 ./scripts/update-upstream.sh
 ```
+
+Notes:
+- `install.sh` runs `prereq-check.sh` automatically by default.
+- To skip the check: `BOOK_COMPRESSOR_SKIP_PREREQ_CHECK=1 ./scripts/install.sh`
 
 Optional runtime env vars:
 - `BOOK_COMPRESSOR_MODE=prod|dev` (default `prod`)
@@ -114,9 +121,29 @@ Users must have rights or permission to process uploaded content.
 
 ## Fork + re-sync workflow
 
-- Fork and customize freely.
-- Later, merge upstream updates using `./scripts/update-upstream.sh`.
+### If you cloned this repo directly (no fork)
 
-This supports both modes:
-1. Own and customize your fork
-2. Re-sync with latest main whenever needed
+```bash
+git pull --ff-only origin main
+./scripts/start.sh
+```
+
+### If you forked and customized
+
+1. Add upstream once:
+
+```bash
+git remote add upstream https://github.com/humanitylabs-org/bookcompressor.git
+```
+
+2. Re-sync updates anytime:
+
+```bash
+./scripts/update-upstream.sh
+./scripts/start.sh
+```
+
+Customization-safe practice:
+- Keep your custom UI changes in your own branch/fork.
+- Pull upstream regularly and resolve conflicts in your branch.
+- Prefer env-based settings for deploy details (port, base path, provider) so updates stay low-friction.
