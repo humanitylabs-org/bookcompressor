@@ -1,4 +1,4 @@
-import type { OpenRouterMessage } from "@/lib/openrouter";
+import type { InferenceMessage } from "@/lib/inference";
 
 export type DetailLevel = "tight" | "balanced" | "deep";
 
@@ -115,7 +115,7 @@ export function buildChapterMessages(input: {
   chapterIndex: number;
   totalChapters: number;
   detailLevel: DetailLevel;
-}): OpenRouterMessage[] {
+}): InferenceMessage[] {
   return [
     {
       role: "system",
@@ -138,7 +138,7 @@ export function buildBookSynthesisMessages(input: {
   config: PromptConfig;
   bookTitle: string;
   chapterSummaries: Array<{ chapterIndex: number; chapterTitle: string; summary: string }>;
-}): OpenRouterMessage[] {
+}): InferenceMessage[] {
   const chapterBlock = input.chapterSummaries
     .map(
       (chapter) =>

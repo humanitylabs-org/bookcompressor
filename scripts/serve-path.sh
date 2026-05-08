@@ -25,7 +25,7 @@ if [[ -z "$BASE_PATH" ]]; then
   exit 1
 fi
 
-TARGET="http://127.0.0.1:${PORT}"
+TARGET="http://127.0.0.1:${PORT}${BASE_PATH}"
 
 echo "Configuring Tailscale Serve path: ${BASE_PATH} -> ${TARGET}"
 tailscale serve --bg --https=443 --set-path="$BASE_PATH" "$TARGET"

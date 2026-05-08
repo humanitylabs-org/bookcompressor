@@ -23,18 +23,23 @@ You can override it at build/start time with:
 - `NEXT_PUBLIC_BASE_PATH`
 - or `BOOK_COMPRESSOR_BASE_PATH`
 
-## Key handling (no key field in UI)
+## Model access (no key field in UI)
 
 The app no longer asks users to paste an API key in the form.
 
-It reads the OpenRouter key from environment config on the machine running the app.
+By default it uses the host's OpenClaw-connected model stack via:
+- `openclaw capability model run --gateway`
 
-Supported env names:
-- `OPENROUTER_API_KEY` (recommended)
-- `OPENROUTER_KEY`
-- `OPENROUTER_API_TOKEN`
-- `AI_API_KEY`
-- `LLM_API_KEY`
+So if OpenClaw is already configured on the machine, users can run Book Compressor without adding a separate model key here.
+
+Optional fallback mode:
+- Set `BOOK_COMPRESSOR_INFERENCE_PROVIDER=openrouter`
+- Then provide one of these env vars:
+  - `OPENROUTER_API_KEY` (recommended)
+  - `OPENROUTER_KEY`
+  - `OPENROUTER_API_TOKEN`
+  - `AI_API_KEY`
+  - `LLM_API_KEY`
 
 ## Core constraints
 
@@ -47,10 +52,12 @@ Supported env names:
 
 ```bash
 npm install
-export OPENROUTER_API_KEY="sk-or-v1-..."
 export NEXT_PUBLIC_BASE_PATH="/bookcompressor"
 npm run dev -- --hostname 127.0.0.1 --port 3000
 ```
+
+Prerequisite for default mode:
+- OpenClaw Gateway is running and usable on this machine
 
 Open:
 - `http://localhost:3000/bookcompressor`
@@ -85,6 +92,8 @@ Optional runtime env vars:
 - `BOOK_COMPRESSOR_HOST=127.0.0.1` (default `127.0.0.1`)
 - `BOOK_COMPRESSOR_PORT=3000` (default `3000`)
 - `NEXT_PUBLIC_BASE_PATH=/bookcompressor` (default `/bookcompressor`)
+- `BOOK_COMPRESSOR_INFERENCE_PROVIDER=openclaw|openrouter` (default `openclaw`)
+- `BOOK_COMPRESSOR_AI_TIMEOUT_MS=300000` (default `300000`)
 
 ## API routes
 

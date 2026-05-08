@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
-import { callOpenRouter } from "@/lib/openrouter";
+import { callInference } from "@/lib/inference";
 import { buildBookSynthesisMessages, mergePromptConfig, PromptConfig } from "@/lib/prompts";
-
-const DEFAULT_MODEL = "anthropic/claude-haiku-4.5";
 
 type SynthesisRequest = {
   model?: string;
@@ -15,11 +13,11 @@ type SynthesisRequest = {
   promptConfig?: Partial<PromptConfig>;
 };
 
-function sanitizeModel(value: unknown, fallback: string): string {
-  if (typeof value !== "string") return fallback;
+function sanitizeModel(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
-  if (!trimmed) return fallback;
-  return trimmed.slice(0, 120);
+  if (!trimmed) return undefined;
+  return trimmed.slice(0, 160);
 }
 
 export const runtime = "nodejs";
@@ -33,7 +31,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
-  const synthesisModel = sanitizeModel(body.model, DEFAULT_MODEL);
+  const synthesisModel = sanitizeModel(body.model);
   const bookTitle = body.bookTitle?.trim() || "Untitled Book";
   const chapterSummaries = Array.isArray(body.chapterSummaries)
     ? body.chapterSummaries.filter((item) => item?.summary && item?.chapterTitle)
@@ -45,7 +43,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const synthesis = await callOpenRouter({
+    const synthesis = await callInference({
       model: synthesisModel,
       messages: buildBookSynthesisMessages({
         config: promptConfig,
@@ -58,7 +56,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       bookTitle,
-      modelUsed: synthesisModel,
+      modelUsed: synthesis.modelUsed || synthesisModel || "host default",
+      providerUsed: synthesis.provider,
       finalSynthesis: synthesis.text,
       usage: synthesis.usage,
     });

@@ -18,7 +18,7 @@ const plexMono = IBM_Plex_Mono({
 
 export const metadata: Metadata = {
   title: "Book Compressor",
-  description: "Chapter-by-chapter EPUB compression with transient processing and bring-your-own OpenRouter key.",
+  description: "Chapter-by-chapter EPUB compression with transient processing and host-managed AI inference.",
 };
 
 export default function RootLayout({

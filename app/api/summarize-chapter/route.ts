@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { callOpenRouter } from "@/lib/openrouter";
+import { callInference } from "@/lib/inference";
 import {
   buildChapterMessages,
   DetailLevel,
@@ -8,7 +8,6 @@ import {
 } from "@/lib/prompts";
 
 const MAX_CHAPTER_CHARS = 120_000;
-const DEFAULT_MODEL = "anthropic/claude-haiku-4.5";
 
 type SummarizeRequest = {
   model?: string;
@@ -27,11 +26,11 @@ function normalizeDetailLevel(level: string | undefined): DetailLevel {
   return "balanced";
 }
 
-function sanitizeModel(value: unknown, fallback: string): string {
-  if (typeof value !== "string") return fallback;
+function sanitizeModel(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
-  if (!trimmed) return fallback;
-  return trimmed.slice(0, 120);
+  if (!trimmed) return undefined;
+  return trimmed.slice(0, 160);
 }
 
 function maxTokensFor(level: DetailLevel): number {
@@ -51,7 +50,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
-  const model = sanitizeModel(body.model, DEFAULT_MODEL);
+  const model = sanitizeModel(body.model);
   const chapterTitle = body.chapterTitle?.trim() || "Untitled Chapter";
   const chapterIndex = Number(body.chapterIndex || 1);
   const totalChapters = Number(body.totalChapters || 1);
@@ -67,7 +66,7 @@ export async function POST(request: Request) {
   const wasTruncated = originalChars > MAX_CHAPTER_CHARS;
 
   try {
-    const result = await callOpenRouter({
+    const result = await callInference({
       model,
       messages: buildChapterMessages({
         config: promptConfig,
@@ -89,7 +88,8 @@ export async function POST(request: Request) {
       originalChars,
       processedChars: chapterText.length,
       finalSummary: result.text,
-      modelUsed: model,
+      modelUsed: result.modelUsed || model || "host default",
+      providerUsed: result.provider,
       usage: result.usage,
     });
   } catch (error) {

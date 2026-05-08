@@ -11,7 +11,7 @@ import { DEFAULT_PROMPT_CONFIG } from "@/lib/prompts";
 import type { DetailLevel, PromptConfig } from "@/lib/prompts";
 import { withBasePath } from "@/lib/base-path";
 
-const DEFAULT_BASELINE_MODEL = "anthropic/claude-haiku-4.5";
+const DEFAULT_BASELINE_MODEL = "";
 
 const SETTINGS_STORAGE_KEY = "book-compressor.settings.v3";
 const RUN_STORAGE_KEY = "book-compressor.run.v3";
@@ -42,19 +42,9 @@ type ChapterResult = {
   error?: string;
 };
 
-type PricingMap = Record<
-  string,
-  {
-    prompt: number;
-    completion: number;
-  }
->;
-
 type PreRunEstimate = {
   chapterCount: number;
   callCount: number;
-  approxCostUsd: number | null;
-  missingPricingModels: string[];
 };
 
 const PROMPT_FIELD_META: Array<{
@@ -110,16 +100,6 @@ function statusClass(status: ChapterStatus): string {
   if (status === "done") return "badge badge--done";
   if (status === "failed") return "badge badge--failed";
   return "badge badge--queued";
-}
-
-function charsToTokens(charCount: number): number {
-  return Math.max(1, Math.ceil(charCount / 4));
-}
-
-function completionTargets(detailLevel: DetailLevel) {
-  if (detailLevel === "tight") return { chapter: 1100, synthesis: 1800 };
-  if (detailLevel === "deep") return { chapter: 3500, synthesis: 3500 };
-  return { chapter: 2100, synthesis: 2400 };
 }
 
 async function postJsonWithTimeout<TPayload, TResult>(
@@ -563,8 +543,6 @@ export default function Home() {
   const [statusLine, setStatusLine] = useState("Idle");
   const [resumeNotice, setResumeNotice] = useState<string | null>(null);
 
-  const [pricingMap, setPricingMap] = useState<PricingMap>({});
-
   const completedCount = chapterResults.filter(
     (result) => result.status === "done" || result.status === "failed",
   ).length;
@@ -589,42 +567,11 @@ export default function Home() {
 
     if (!selected.length) return null;
 
-    const targets = completionTargets(detailLevel);
-    const buckets: Record<string, { prompt: number; completion: number }> = {};
-    const add = (model: string, promptTokens: number, completionTokens: number) => {
-      if (!buckets[model]) buckets[model] = { prompt: 0, completion: 0 };
-      buckets[model].prompt += promptTokens;
-      buckets[model].completion += completionTokens;
-    };
-
-    for (const chapter of selected) {
-      const chapterTokens = charsToTokens(chapter.charCount);
-      add(chapterModel, chapterTokens + 600, targets.chapter);
-    }
-
-    const synthesisPrompt = selected.length * targets.chapter + 600;
-    add(synthesisModel, synthesisPrompt, targets.synthesis);
-
-    let totalCost = 0;
-    const missing: string[] = [];
-
-    for (const [model, tokenUsage] of Object.entries(buckets)) {
-      const pricing = pricingMap[model];
-      if (!pricing) {
-        missing.push(model);
-        continue;
-      }
-      totalCost += tokenUsage.prompt * pricing.prompt;
-      totalCost += tokenUsage.completion * pricing.completion;
-    }
-
     return {
       chapterCount: selected.length,
       callCount: selected.length + 1,
-      approxCostUsd: missing.length ? null : totalCost,
-      missingPricingModels: missing,
     };
-  }, [parsedBookCache, maxChapters, detailLevel, chapterModel, synthesisModel, pricingMap]);
+  }, [parsedBookCache, maxChapters]);
 
   useEffect(() => {
     try {
@@ -705,47 +652,6 @@ export default function Home() {
       // ignore write failures
     }
   }, [bookTitle, chapterResults, bookSynthesis, statusLine]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadPricing = async () => {
-      try {
-        const response = await fetch("https://openrouter.ai/api/v1/models");
-        if (!response.ok) return;
-        const payload = (await response.json()) as {
-          data?: Array<{
-            id?: string;
-            pricing?: {
-              prompt?: string;
-              completion?: string;
-            };
-          }>;
-        };
-
-        if (cancelled || !Array.isArray(payload.data)) return;
-
-        const nextMap: PricingMap = {};
-        payload.data.forEach((model) => {
-          const id = model.id;
-          const prompt = Number(model.pricing?.prompt || 0);
-          const completion = Number(model.pricing?.completion || 0);
-          if (!id || !prompt || !completion) return;
-          nextMap[id] = { prompt, completion };
-        });
-
-        setPricingMap(nextMap);
-      } catch {
-        // ignore pricing fetch failures
-      }
-    };
-
-    void loadPricing();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const updateChapter = (chapterIndex: number, updates: Partial<ChapterResult>) => {
     setChapterResults((previous) =>
@@ -877,7 +783,7 @@ export default function Home() {
         try {
           const payload = await postJsonWithTimeout<
             {
-              model: string;
+              model?: string;
               chapterTitle: string;
               chapterText: string;
               chapterIndex: number;
@@ -894,7 +800,7 @@ export default function Home() {
           >(
             withBasePath("/api/summarize-chapter"),
             {
-              model: chapterModel.trim() || DEFAULT_BASELINE_MODEL,
+              model: chapterModel.trim() || undefined,
               chapterTitle: chapter.chapterTitle,
               chapterText: chapter.chapterText,
               chapterIndex: chapter.chapterIndex,
@@ -945,7 +851,7 @@ export default function Home() {
 
         const synthesisPayload = await postJsonWithTimeout<
           {
-            model: string;
+            model?: string;
             bookTitle: string;
             chapterSummaries: Array<{ chapterIndex: number; chapterTitle: string; summary: string }>;
             promptConfig: PromptConfig;
@@ -957,7 +863,7 @@ export default function Home() {
         >(
           withBasePath("/api/synthesize-book"),
           {
-            model: synthesisModel.trim() || DEFAULT_BASELINE_MODEL,
+            model: synthesisModel.trim() || undefined,
             bookTitle: parsed.bookTitle,
             chapterSummaries: doneNow,
             promptConfig,
@@ -1069,12 +975,12 @@ export default function Home() {
           <section className="card">
             <h2 className="card__title">Compression Setup</h2>
             <p className="card__subtitle">
-              Uses your device's shared OpenRouter key. Defaults to Claude Haiku 4.5; switch
-              models if you want richer output.
+              Uses this host's OpenClaw-connected AI model by default. You can optionally set a
+              specific model override per run.
             </p>
 
             <div className="alert alert--info" style={{ marginBottom: 14 }}>
-              This app reads the OpenRouter key from environment config (not from this form).
+              No API key field required in this form. The server handles model access.
             </div>
 
             <form onSubmit={handleCompress}>
@@ -1085,11 +991,10 @@ export default function Home() {
                   type="text"
                   value={chapterModel}
                   onChange={(event) => setChapterModel(event.target.value)}
-                  placeholder={DEFAULT_BASELINE_MODEL}
+                  placeholder="(optional) host default if blank"
                 />
                 <p className="hint">
-                  Used for every chapter walkthrough. Try anthropic/claude-sonnet-4.6 for richer
-                  prose.
+                  Used for every chapter walkthrough. Leave blank to use the host's current default model.
                 </p>
               </label>
 
@@ -1100,7 +1005,7 @@ export default function Home() {
                   type="text"
                   value={synthesisModel}
                   onChange={(event) => setSynthesisModel(event.target.value)}
-                  placeholder={DEFAULT_BASELINE_MODEL}
+                  placeholder="(optional) host default if blank"
                 />
                 <p className="hint">Used once at the end to synthesize the per-chapter walkthroughs.</p>
               </label>
@@ -1154,11 +1059,6 @@ export default function Home() {
                 <div className="alert alert--info">
                   <strong>Pre-run estimate:</strong> {estimate.chapterCount} chapters · about{" "}
                   {estimate.callCount} model calls (1 per chapter + 1 synthesis).
-                  {estimate.approxCostUsd !== null ? (
-                    <> Estimated cost: ~${estimate.approxCostUsd.toFixed(2)}.</>
-                  ) : (
-                    <> Cost unavailable for one or more selected models.</>
-                  )}
                   {estimate.chapterCount > 50 ? (
                     <> High chapter count — consider lowering max chapters.</>
                   ) : null}
