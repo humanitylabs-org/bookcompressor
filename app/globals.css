@@ -476,33 +476,35 @@ a {
 
 .bcv-page {
   min-height: 100vh;
-  padding: 34px 18px 60px;
+  padding: 24px 20px 74px;
   background: var(--bg);
   color: var(--text);
 }
 
 .bcv-header {
-  max-width: 1240px;
-  margin: 0 auto 18px;
+  max-width: 1320px;
+  margin: 0 auto 24px;
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 16px;
+  gap: 18px;
   flex-wrap: wrap;
 }
 
 .bcv-title {
   margin: 0;
-  font-size: clamp(30px, 4vw, 44px);
-  line-height: 1.16;
+  font-size: clamp(30px, 3.9vw, 48px);
+  line-height: 1.12;
   letter-spacing: -0.01em;
   font-weight: 500;
 }
 
 .bcv-subtitle {
-  margin: 8px 0 0;
+  margin: 10px 0 0;
   color: var(--text-subtle);
-  font-size: 14px;
+  font-size: 13px;
+  line-height: 1.45;
+  letter-spacing: 0.01em;
 }
 
 .bcv-header__left {
@@ -521,11 +523,11 @@ a {
 
 .bcv-hamburger {
   display: none;
-  width: 42px;
-  height: 42px;
+  width: 40px;
+  height: 40px;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
+  border-radius: 10px;
+  background: var(--surface-soft);
   padding: 0;
   flex-direction: column;
   justify-content: center;
@@ -549,18 +551,26 @@ a {
 
 .bcv-header__actions {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   align-items: center;
   flex-wrap: wrap;
 }
 
 .bcv-link {
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 10px 12px;
+  border-radius: 8px;
+  padding: 9px 12px;
   text-decoration: none;
-  font-size: 13px;
+  font-size: 12.5px;
+  letter-spacing: 0.01em;
   color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.01);
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.bcv-link:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.24);
 }
 
 .bcv-upload-btn {
@@ -622,29 +632,31 @@ a {
 }
 
 .bcv-shell {
-  max-width: 1240px;
+  max-width: 1320px;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: 280px 1fr;
-  gap: 16px;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 20px;
   align-items: start;
 }
 
 .bcv-sidebar {
   border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--surface);
-  padding: 10px;
-  max-height: calc(100vh - 160px);
+  border-radius: 12px;
+  background: #141419;
+  padding: 12px;
+  max-height: calc(100vh - 48px);
+  position: sticky;
+  top: 20px;
   overflow: auto;
 }
 
 .bcv-sidebar__label {
-  margin: 10px 8px 8px;
+  margin: 12px 10px 8px;
   font-family: var(--font-plex-mono), "IBM Plex Mono", monospace;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text-subtle);
 }
 
@@ -660,12 +672,12 @@ a {
   background: transparent;
   color: var(--text-muted);
   text-align: left;
-  padding: 9px 10px;
+  padding: 10px 11px;
   cursor: pointer;
   width: 100%;
   display: flex;
-  gap: 8px;
-  align-items: baseline;
+  gap: 10px;
+  align-items: flex-start;
 }
 
 .bcv-nav-item:hover {
@@ -673,8 +685,8 @@ a {
 }
 
 .bcv-nav-item--active {
-  border-color: rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.09);
   color: var(--text);
 }
 
@@ -682,51 +694,55 @@ a {
   font-family: var(--font-plex-mono), "IBM Plex Mono", monospace;
   font-size: 11px;
   color: var(--text-subtle);
-  min-width: 22px;
+  min-width: 24px;
+  margin-top: 2px;
 }
 
 .bcv-nav-item__title {
-  font-size: 13px;
-  line-height: 1.4;
+  font-size: 13.5px;
+  line-height: 1.46;
 }
 
 .bcv-main {
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--surface);
-  padding: 16px 18px;
+  padding: 24px 30px;
+  min-height: calc(100vh - 210px);
 }
 
 .bcv-main__meta h2 {
   margin: 0;
-  font-size: 25px;
+  font-size: clamp(27px, 2.6vw, 34px);
+  line-height: 1.18;
   font-weight: 500;
   letter-spacing: -0.01em;
 }
 
 .bcv-main__meta p {
-  margin: 7px 0 0;
+  margin: 9px 0 0;
   color: var(--text-subtle);
-  font-size: 12px;
+  font-size: 11.5px;
+  letter-spacing: 0.01em;
   font-family: var(--font-plex-mono), "IBM Plex Mono", monospace;
 }
 
 .bcv-main__heading {
-  margin-top: 18px;
-  margin-bottom: 12px;
+  margin-top: 24px;
+  margin-bottom: 14px;
 }
 
 .bcv-main__heading h3 {
   margin: 0;
-  font-size: 19px;
-  line-height: 1.35;
+  font-size: clamp(21px, 2.1vw, 27px);
+  line-height: 1.3;
 }
 
 .bcv-markdown {
-  margin-top: 14px;
-  color: var(--text-muted);
-  font-size: 15px;
-  line-height: 1.7;
+  margin-top: 10px;
+  color: #e2e2e7;
+  font-size: 16px;
+  line-height: 1.78;
 }
 
 .bcv-markdown h1,
@@ -734,18 +750,51 @@ a {
 .bcv-markdown h3,
 .bcv-markdown h4 {
   color: var(--text);
-  margin-top: 1.2em;
-  margin-bottom: 0.45em;
+  margin-top: 1.32em;
+  margin-bottom: 0.52em;
   line-height: 1.3;
 }
 
+.bcv-markdown h1 {
+  font-size: clamp(1.95rem, 3vw, 2.45rem);
+}
+
+.bcv-markdown h2 {
+  font-size: clamp(1.55rem, 2.2vw, 2rem);
+}
+
+.bcv-markdown h3 {
+  font-size: clamp(1.28rem, 1.8vw, 1.6rem);
+}
+
+.bcv-markdown h4 {
+  font-size: 1.08rem;
+}
+
 .bcv-markdown p {
-  margin: 0 0 0.9em;
+  margin: 0 0 1em;
+}
+
+.bcv-markdown strong {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.bcv-markdown blockquote {
+  margin: 1em 0 1.2em;
+  padding: 10px 14px;
+  border-left: 2px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.bcv-markdown blockquote p:last-child {
+  margin-bottom: 0;
 }
 
 .bcv-ai-note {
   margin: 1em 0 1.15em;
-  padding: 12px 14px;
+  padding: 13px 15px;
   border-left: 3px solid #d4a843;
   border-radius: 8px;
   background: rgba(212, 168, 67, 0.12);
@@ -760,12 +809,12 @@ a {
 
 .bcv-markdown ul,
 .bcv-markdown ol {
-  margin: 0 0 1em;
-  padding-left: 1.3em;
+  margin: 0 0 1.1em;
+  padding-left: 1.35em;
 }
 
 .bcv-markdown li {
-  margin-bottom: 0.35em;
+  margin-bottom: 0.4em;
 }
 
 .bcv-markdown code {
@@ -781,9 +830,10 @@ a {
   overflow: auto;
   background: #0f0f12;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 12px;
+  border-radius: 10px;
+  padding: 14px;
   margin: 0 0 1em;
+  line-height: 1.58;
 }
 
 .bcv-markdown pre code {
@@ -799,24 +849,32 @@ a {
 }
 
 .bcv-main__pager {
-  margin-top: 18px;
+  margin-top: 30px;
   display: flex;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
   position: sticky;
-  bottom: 0;
-  padding-top: 10px;
-  background: linear-gradient(to top, var(--surface), rgba(22, 22, 26, 0.88));
+  bottom: -2px;
+  padding-top: 14px;
+  padding-bottom: 6px;
+  background: linear-gradient(to top, var(--surface) 72%, rgba(22, 22, 26, 0.88));
 }
 
 .bcv-pager-btn {
   border: 1px solid var(--border);
-  background: transparent;
+  background: rgba(255, 255, 255, 0.02);
   color: var(--text);
-  border-radius: 6px;
-  padding: 9px 12px;
-  font-size: 13px;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 13.5px;
+  font-weight: 500;
   cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.bcv-pager-btn:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.26);
+  background: rgba(255, 255, 255, 0.07);
 }
 
 .bcv-pager-btn:disabled {
@@ -825,8 +883,35 @@ a {
 }
 
 @media (max-width: 980px) {
+  .bcv-page {
+    padding: 14px 12px 48px;
+  }
+
+  .bcv-header {
+    margin-bottom: 12px;
+    gap: 12px;
+  }
+
+  .bcv-title {
+    font-size: clamp(25px, 7vw, 32px);
+  }
+
+  .bcv-subtitle {
+    font-size: 12.5px;
+  }
+
+  .bcv-header__actions {
+    width: 100%;
+  }
+
+  .bcv-link {
+    flex: 1;
+    text-align: center;
+  }
+
   .bcv-shell {
     grid-template-columns: 1fr;
+    gap: 12px;
   }
 
   .bcv-hamburger {
@@ -838,9 +923,9 @@ a {
     top: 0;
     left: 0;
     bottom: 0;
-    width: min(82vw, 340px);
+    width: min(86vw, 360px);
     max-height: 100vh;
-    border-radius: 0 14px 14px 0;
+    border-radius: 0 16px 16px 0;
     border-left: none;
     transform: translateX(-100%);
     transition: transform 220ms ease;
@@ -870,11 +955,30 @@ a {
   }
 
   .bcv-main {
-    padding: 14px;
+    min-height: auto;
+    padding: 16px 14px 20px;
   }
 
   .bcv-main__meta h2 {
     font-size: 22px;
+  }
+
+  .bcv-main__heading h3 {
+    font-size: 19px;
+  }
+
+  .bcv-markdown {
+    font-size: 15.2px;
+    line-height: 1.72;
+  }
+
+  .bcv-main__pager {
+    margin-top: 22px;
+    padding-top: 12px;
+  }
+
+  .bcv-pager-btn {
+    flex: 1;
   }
 
   .library-item {
