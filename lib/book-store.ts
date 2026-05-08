@@ -8,6 +8,7 @@ export type StoredBookSettings = {
   synthesisModel?: string;
   detailLevel?: string;
   maxChapters?: string;
+  chapterConcurrency?: string;
 };
 
 export type StoredBookChapter = {
@@ -193,4 +194,3 @@ export async function clearAllBooks(): Promise<number> {
 
   return deleted;
 }
-

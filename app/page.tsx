@@ -518,6 +518,7 @@ export default function Home() {
   const [synthesisModel, setSynthesisModel] = useState(DEFAULT_BASELINE_MODEL);
   const [detailLevel, setDetailLevel] = useState<DetailLevel>("balanced");
   const [maxChapters, setMaxChapters] = useState("0");
+  const [chapterConcurrency, setChapterConcurrency] = useState("2");
 
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
   const [epubFile, setEpubFile] = useState<File | null>(null);
@@ -627,6 +628,7 @@ export default function Home() {
             synthesisModel,
             detailLevel,
             maxChapters,
+            chapterConcurrency,
           },
           chapters: input.chapters,
           synthesis: input.synthesis || null,
@@ -785,12 +787,16 @@ export default function Home() {
         synthesisModel?: string;
         detailLevel?: DetailLevel;
         maxChapters?: string;
+        chapterConcurrency?: string;
       };
 
       if (parsed.chapterModel) setChapterModel(parsed.chapterModel);
       if (parsed.synthesisModel) setSynthesisModel(parsed.synthesisModel);
       if (parsed.detailLevel) setDetailLevel(parsed.detailLevel);
       if (typeof parsed.maxChapters === "string") setMaxChapters(parsed.maxChapters);
+      if (typeof parsed.chapterConcurrency === "string") {
+        setChapterConcurrency(parsed.chapterConcurrency);
+      }
     } catch {
       // ignore local storage parse failures
     }
@@ -805,12 +811,13 @@ export default function Home() {
           synthesisModel,
           detailLevel,
           maxChapters,
+          chapterConcurrency,
         }),
       );
     } catch {
       // ignore write failures
     }
-  }, [chapterModel, synthesisModel, detailLevel, maxChapters]);
+  }, [chapterModel, synthesisModel, detailLevel, maxChapters, chapterConcurrency]);
 
   useEffect(() => {
     try {
@@ -995,75 +1002,99 @@ export default function Home() {
         processedChars?: number;
       }> = [];
 
-      for (const chapter of selectedChapters) {
-        if (runController.signal.aborted) break;
+      const rawConcurrency = Number(chapterConcurrency);
+      const workerCount = Number.isFinite(rawConcurrency)
+        ? Math.max(1, Math.min(4, Math.floor(rawConcurrency)))
+        : 1;
 
-        setStatusLine(`Compressing chapter ${chapter.chapterIndex}/${selectedChapters.length}...`);
-        updateChapter(chapter.chapterIndex, { status: "running", error: undefined });
+      let queueIndex = 0;
+      let completedChapters = 0;
 
-        try {
-          const payload = await postJsonWithTimeout<
-            {
-              model?: string;
-              chapterTitle: string;
-              chapterText: string;
-              chapterIndex: number;
-              totalChapters: number;
-              detailLevel: DetailLevel;
-              promptConfig: PromptConfig;
-            },
-            {
-              finalSummary?: string;
-              truncated?: boolean;
-              originalChars?: number;
-              processedChars?: number;
-            }
-          >(
-            withBasePath("/api/summarize-chapter"),
-            {
-              model: chapterModel.trim() || undefined,
-              chapterTitle: chapter.chapterTitle,
-              chapterText: chapter.chapterText,
-              chapterIndex: chapter.chapterIndex,
-              totalChapters: selectedChapters.length,
-              detailLevel,
-              promptConfig,
-            },
-            runController.signal,
-          );
+      setStatusLine(
+        `Compressing chapters with ${workerCount} worker${workerCount === 1 ? "" : "s"}...`,
+      );
 
-          updateChapter(chapter.chapterIndex, {
-            status: "done",
-            finalSummary: payload.finalSummary,
-            truncated: payload.truncated,
-            originalChars: payload.originalChars,
-            processedChars: payload.processedChars,
-          });
+      const runNextChapter = async () => {
+        while (true) {
+          if (runController.signal.aborted) return;
 
-          if (payload.finalSummary) {
-            doneNow.push({
-              chapterIndex: chapter.chapterIndex,
-              chapterTitle: chapter.chapterTitle,
-              summary: payload.finalSummary,
+          const chapter = selectedChapters[queueIndex];
+          queueIndex += 1;
+          if (!chapter) return;
+
+          updateChapter(chapter.chapterIndex, { status: "running", error: undefined });
+
+          try {
+            const payload = await postJsonWithTimeout<
+              {
+                model?: string;
+                chapterTitle: string;
+                chapterText: string;
+                chapterIndex: number;
+                totalChapters: number;
+                detailLevel: DetailLevel;
+                promptConfig: PromptConfig;
+              },
+              {
+                finalSummary?: string;
+                truncated?: boolean;
+                originalChars?: number;
+                processedChars?: number;
+              }
+            >(
+              withBasePath("/api/summarize-chapter"),
+              {
+                model: chapterModel.trim() || undefined,
+                chapterTitle: chapter.chapterTitle,
+                chapterText: chapter.chapterText,
+                chapterIndex: chapter.chapterIndex,
+                totalChapters: selectedChapters.length,
+                detailLevel,
+                promptConfig,
+              },
+              runController.signal,
+            );
+
+            updateChapter(chapter.chapterIndex, {
+              status: "done",
+              finalSummary: payload.finalSummary,
               truncated: payload.truncated,
               originalChars: payload.originalChars,
               processedChars: payload.processedChars,
             });
-          }
-        } catch (chapterError) {
-          const message =
-            chapterError instanceof Error ? chapterError.message : "Unknown chapter failure.";
 
-          updateChapter(chapter.chapterIndex, {
-            status: "failed",
-            error: message,
-          });
+            if (payload.finalSummary) {
+              doneNow.push({
+                chapterIndex: chapter.chapterIndex,
+                chapterTitle: chapter.chapterTitle,
+                summary: payload.finalSummary,
+                truncated: payload.truncated,
+                originalChars: payload.originalChars,
+                processedChars: payload.processedChars,
+              });
+            }
+          } catch (chapterError) {
+            const message =
+              chapterError instanceof Error ? chapterError.message : "Unknown chapter failure.";
 
-          if (message === "Run stopped by user.") {
-            break;
+            updateChapter(chapter.chapterIndex, {
+              status: "failed",
+              error: message,
+            });
+
+            if (message === "Run stopped by user.") {
+              return;
+            }
+          } finally {
+            completedChapters += 1;
+            setStatusLine(
+              `Compressing chapters... ${completedChapters}/${selectedChapters.length} finished.`,
+            );
           }
         }
-      }
+      };
+
+      await Promise.all(Array.from({ length: workerCount }, () => runNextChapter()));
 
       if (runController.signal.aborted) {
         setStatusLine("Stopped by user.");
@@ -1071,6 +1102,7 @@ export default function Home() {
       }
 
       if (doneNow.length) {
+        const orderedDone = doneNow.slice().sort((a, b) => a.chapterIndex - b.chapterIndex);
         let finalSynthesis = "";
         setStatusLine("Synthesizing full book output...");
 
@@ -1090,7 +1122,7 @@ export default function Home() {
           {
             model: synthesisModel.trim() || undefined,
             bookTitle: parsed.bookTitle,
-            chapterSummaries: doneNow,
+            chapterSummaries: orderedDone,
             promptConfig,
           },
           runController.signal,
@@ -1106,7 +1138,7 @@ export default function Home() {
           const bookId = await saveRunToLibrary({
             bookTitle: parsed.bookTitle,
             detectionMethod: parsed.detectionMethod,
-            chapters: doneNow,
+            chapters: orderedDone,
             synthesis: finalSynthesis,
           });
           setStatusLine(`Done. Saved as /${bookId}.`);
@@ -1209,6 +1241,22 @@ export default function Home() {
                     onChange={(event) => setMaxChapters(event.target.value)}
                   />
                   <p className="hint">Default is 0 (process all detected chapters).</p>
+                </label>
+
+                <label className="field">
+                  <span className="field__label">Parallel Chapter Workers (1-4)</span>
+                  <input
+                    className="input"
+                    type="number"
+                    min={1}
+                    max={4}
+                    step={1}
+                    value={chapterConcurrency}
+                    onChange={(event) => setChapterConcurrency(event.target.value)}
+                  />
+                  <p className="hint">
+                    Default is 2. Higher values are faster but can increase model load.
+                  </p>
                 </label>
               </details>
 
