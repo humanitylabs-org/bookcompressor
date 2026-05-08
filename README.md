@@ -72,6 +72,9 @@ Viewer:
 ## Standard lifecycle scripts
 
 ```bash
+# one-command guided setup (recommended)
+./scripts/setup.sh
+
 # prerequisite check (tailscale + openclaw + model smoke + port)
 ./scripts/prereq-check.sh
 
@@ -97,6 +100,19 @@ Viewer:
 Notes:
 - `install.sh` runs `prereq-check.sh` automatically by default.
 - To skip the check: `BOOK_COMPRESSOR_SKIP_PREREQ_CHECK=1 ./scripts/install.sh`
+- `prereq-check.sh` now prints explicit safe fix hints when a requirement is missing and writes a report to `.runtime/prereq-report.txt`.
+
+### AI-guided resilient setup loop
+
+If prerequisites are missing, use this loop:
+
+1. Run `./scripts/prereq-check.sh`
+2. Fix one required issue from the script's "Suggested safe fixes"
+3. Re-run `./scripts/prereq-check.sh`
+4. Repeat until all required checks pass
+5. Run `./scripts/setup.sh`
+
+Safety rule: any `sudo` or package-manager command should be user-approved before running.
 
 Optional runtime env vars:
 - `BOOK_COMPRESSOR_MODE=prod|dev` (default `prod`)

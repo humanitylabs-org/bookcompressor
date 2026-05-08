@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "local:install": "./scripts/install.sh",
+    "local:setup": "./scripts/setup.sh",
     "local:prereq-check": "./scripts/prereq-check.sh",
     "local:start": "./scripts/start.sh",
     "local:stop": "./scripts/stop.sh",
