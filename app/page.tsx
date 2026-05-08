@@ -1058,7 +1058,7 @@ export default function Home() {
             chapters: doneNow,
             synthesis: finalSynthesis,
           });
-          setStatusLine(`Done. Saved as /books/${bookId}.`);
+          setStatusLine(`Done. Saved as /${bookId}.`);
         } catch (saveError) {
           const message = saveError instanceof Error ? saveError.message : "Unknown save failure.";
           setError(`Compression finished, but saving failed: ${message}`);
@@ -1162,10 +1162,10 @@ export default function Home() {
 
         <div className="grid">
           <section className="card">
-            <h2 className="card__title">Settings + Upload Fallback</h2>
+            <h2 className="card__title">Simple Setup + Upload Fallback</h2>
             <p className="card__subtitle">
-              Primary path is chat-based ingestion through your AI gateway. These settings control
-              local runs and are reused when saving compressed books to local permalinks.
+              Use chat as the main flow: send EPUB to your AI gateway. This page keeps only quick
+              settings, local history, and a fallback uploader.
             </p>
 
             <div className="alert alert--info" style={{ marginBottom: 14 }}>
@@ -1173,31 +1173,33 @@ export default function Home() {
             </div>
 
             <form onSubmit={handleCompress}>
-              <label className="field">
-                <span className="field__label">Chapter Model</span>
-                <input
-                  className="input"
-                  type="text"
-                  value={chapterModel}
-                  onChange={(event) => setChapterModel(event.target.value)}
-                  placeholder="(optional) host default if blank"
-                />
-                <p className="hint">
-                  Used for every chapter walkthrough. Leave blank to use the host's current default model.
-                </p>
-              </label>
+              <details className="prompt-editor" style={{ marginBottom: 14 }}>
+                <summary className="prompt-editor__summary">Advanced model overrides (optional)</summary>
+                <label className="field">
+                  <span className="field__label">Chapter Model</span>
+                  <input
+                    className="input"
+                    type="text"
+                    value={chapterModel}
+                    onChange={(event) => setChapterModel(event.target.value)}
+                    placeholder="(optional) host default if blank"
+                  />
+                </label>
 
-              <label className="field">
-                <span className="field__label">Book Synthesis Model</span>
-                <input
-                  className="input"
-                  type="text"
-                  value={synthesisModel}
-                  onChange={(event) => setSynthesisModel(event.target.value)}
-                  placeholder="(optional) host default if blank"
-                />
-                <p className="hint">Used once at the end to synthesize the per-chapter walkthroughs.</p>
-              </label>
+                <label className="field">
+                  <span className="field__label">Book Synthesis Model</span>
+                  <input
+                    className="input"
+                    type="text"
+                    value={synthesisModel}
+                    onChange={(event) => setSynthesisModel(event.target.value)}
+                    placeholder="(optional) host default if blank"
+                  />
+                  <p className="hint">
+                    Leave both blank to use whatever model OpenClaw has available by default.
+                  </p>
+                </label>
+              </details>
 
               <label className="field">
                 <span className="field__label">Detail Level</span>
@@ -1262,8 +1264,8 @@ export default function Home() {
                 </div>
               ) : null}
 
-              <details className="prompt-editor" open>
-                <summary className="prompt-editor__summary">Prompt Modules (Editable Before Run)</summary>
+              <details className="prompt-editor">
+                <summary className="prompt-editor__summary">Advanced prompt modules (optional)</summary>
                 <p className="hint">
                   Edit prompts for this run. Reloading the page resets prompt text to defaults.
                 </p>
@@ -1344,7 +1346,7 @@ export default function Home() {
               </div>
 
               <p className="hint" style={{ marginTop: 12 }}>
-                Each successful run is saved to local history with permalink format <code>/books/&lt;id&gt;</code>.
+                Each successful run is saved to local history with permalink format <code>/&lt;id&gt;</code>.
                 You can still open <Link href="/viewer">/viewer</Link> for ZIP-based browsing.
               </p>
             </form>
@@ -1366,14 +1368,14 @@ export default function Home() {
           </section>
 
           <section className="card">
-            <h2 className="card__title">Local Library + Latest Fallback Run</h2>
+            <h2 className="card__title">Local Library</h2>
             <p className="card__subtitle">
-              Saved books live on this machine and are exposed via local permalinks.
+              Completed compressions live on this machine as local permalinks.
             </p>
 
             {savedBookId ? (
               <div className="alert alert--info">
-                Saved successfully: <Link href={`/books/${savedBookId}`}>/books/{savedBookId}</Link>
+                Saved successfully: <Link href={`/${savedBookId}`}>/{savedBookId}</Link>
               </div>
             ) : null}
 
@@ -1412,19 +1414,19 @@ export default function Home() {
                   <article className="library-item" key={book.id}>
                     <div>
                       <p className="library-item__title">
-                        <Link href={`/books/${book.id}`}>{book.bookTitle}</Link>
+                        <Link href={`/${book.id}`}>{book.bookTitle}</Link>
                       </p>
                       <p className="library-item__meta">
                         {new Date(book.createdAt).toLocaleString()} · {book.chapterCount} chapters
                         {book.hasSynthesis ? " · synthesis" : ""}
                       </p>
                       <p className="library-item__meta">
-                        <code>/books/{book.id}</code>
+                        <code>/{book.id}</code>
                       </p>
                     </div>
 
                     <div className="library-item__actions">
-                      <a className="button button--ghost button-link" href={withBasePath(`/books/${book.id}`)}>
+                      <a className="button button--ghost button-link" href={withBasePath(`/${book.id}`)}>
                         Open
                       </a>
                       <a
@@ -1450,68 +1452,28 @@ export default function Home() {
 
             <hr className="library-divider" />
 
-            <h3 className="card__title">Current Fallback Upload Run</h3>
+            <h3 className="card__title">Fallback run status</h3>
             <p className="card__subtitle">
-              {bookTitle ? `Book: ${bookTitle}` : "No fallback run active."}
+              {bookTitle ? `Book: ${bookTitle}` : "No fallback upload running."}
               {isSavingBook ? " Saving to local library..." : ""}
             </p>
 
             {resumeNotice ? <div className="alert alert--info">{resumeNotice}</div> : null}
+            {error ? <div className="alert alert--error">{error}</div> : null}
 
             <p className="status">Status: {statusLine}</p>
             <div className="progress" aria-label="progress">
               <div className="progress__fill" style={{ width: `${progressPercent}%` }} />
             </div>
 
-            {!chapterResults.length ? (
-              <div className="alert alert--info">Run a fallback upload to preview chapter output here.</div>
+            {chapterResults.length ? (
+              <p className="footer-note">
+                Latest run: {successfulChapters.length} successful chapters
+                {bookSynthesis ? " + synthesis" : ""}. Use the saved permalink above to read the full output.
+              </p>
             ) : (
-              <div className="chapter-list">
-                {chapterResults.map((chapter) => (
-                  <article key={chapter.chapterIndex} className="chapter-card">
-                    <div className="chapter-card__top">
-                      <h3 className="chapter-card__title">
-                        Chapter {chapter.chapterIndex}: {chapter.chapterTitle}
-                      </h3>
-                      <span className={statusClass(chapter.status)}>{chapter.status}</span>
-                    </div>
-
-                    <p className="chapter-card__meta">
-                      {chapter.processedChars
-                        ? `${chapter.processedChars.toLocaleString()} chars processed`
-                        : "Waiting for processing"}
-                      {chapter.truncated ? " · input trimmed for model context" : ""}
-                    </p>
-
-                    {chapter.error ? <pre className="markdown">Error: {chapter.error}</pre> : null}
-                    {chapter.finalSummary ? (
-                      <article className="bcv-markdown bcv-inline-markdown">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
-                          {chapter.finalSummary}
-                        </ReactMarkdown>
-                      </article>
-                    ) : null}
-                  </article>
-                ))}
-              </div>
+              <p className="footer-note">When a fallback upload finishes, it is auto-saved to local library.</p>
             )}
-
-            {bookSynthesis ? (
-              <>
-                <h3 className="card__title" style={{ marginTop: 20 }}>
-                  Full Book Compression
-                </h3>
-                <article className="bcv-markdown bcv-inline-markdown">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
-                    {bookSynthesis}
-                  </ReactMarkdown>
-                </article>
-              </>
-            ) : null}
-
-            <p className="footer-note">
-              ZIP downloads include summary.json, chapter markdown files, and book-compression.md.
-            </p>
           </section>
         </div>
       </div>

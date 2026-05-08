@@ -3,7 +3,7 @@
 Book Compressor is a local-first EPUB compression tool.
 
 - Chat-first workflow (send EPUB to your AI gateway)
-- Local permalink library for completed compressions (`/books/<id>`)
+- Local permalink library for completed compressions (`/<id>`)
 - Web upload fallback (drag/drop + file picker) for large/direct runs
 - Generate chapter-by-chapter walkthroughs + final synthesis
 - Download ZIP artifacts per saved book
@@ -22,6 +22,10 @@ Default base path in this repo:
 You can override it at build/start time with:
 - `NEXT_PUBLIC_BASE_PATH`
 - or `BOOK_COMPRESSOR_BASE_PATH`
+
+PWA note:
+- Manifest `id`, `start_url`, and `scope` are scoped to this base path.
+- This allows separate installs per app path on the same domain (for example `/bookcompressor` and `/mindfeed`).
 
 ## Model access (no key field in UI)
 
@@ -117,7 +121,7 @@ With default base path `/bookcompressor`, the effective routes are:
 - `GET /bookcompressor/api/books/:id/zip` (download ZIP artifact)
 
 Permalink pages:
-- `/bookcompressor/books/:id`
+- `/bookcompressor/:id`
 
 ## Privacy model
 
