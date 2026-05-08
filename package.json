@@ -6,7 +6,13 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "local:install": "./scripts/install.sh",
+    "local:start": "./scripts/start.sh",
+    "local:stop": "./scripts/stop.sh",
+    "local:status": "./scripts/status.sh",
+    "local:serve-path": "./scripts/serve-path.sh",
+    "local:update-upstream": "./scripts/update-upstream.sh"
   },
   "dependencies": {
     "jszip": "^3.10.1",

@@ -5,7 +5,6 @@ import { buildBookSynthesisMessages, mergePromptConfig, PromptConfig } from "@/l
 const DEFAULT_MODEL = "anthropic/claude-haiku-4.5";
 
 type SynthesisRequest = {
-  apiKey?: string;
   model?: string;
   bookTitle?: string;
   chapterSummaries?: Array<{
@@ -34,7 +33,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
-  const apiKey = body.apiKey?.trim();
   const synthesisModel = sanitizeModel(body.model, DEFAULT_MODEL);
   const bookTitle = body.bookTitle?.trim() || "Untitled Book";
   const chapterSummaries = Array.isArray(body.chapterSummaries)
@@ -42,17 +40,12 @@ export async function POST(request: Request) {
     : [];
   const promptConfig = mergePromptConfig(body.promptConfig);
 
-  if (!apiKey) {
-    return NextResponse.json({ error: "OpenRouter API key is required." }, { status: 400 });
-  }
-
   if (chapterSummaries.length === 0) {
     return NextResponse.json({ error: "chapterSummaries is required." }, { status: 400 });
   }
 
   try {
     const synthesis = await callOpenRouter({
-      apiKey,
       model: synthesisModel,
       messages: buildBookSynthesisMessages({
         config: promptConfig,

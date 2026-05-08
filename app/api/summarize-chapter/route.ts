@@ -11,7 +11,6 @@ const MAX_CHAPTER_CHARS = 120_000;
 const DEFAULT_MODEL = "anthropic/claude-haiku-4.5";
 
 type SummarizeRequest = {
-  apiKey?: string;
   model?: string;
   chapterTitle?: string;
   chapterText?: string;
@@ -52,17 +51,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
-  const apiKey = body.apiKey?.trim();
   const model = sanitizeModel(body.model, DEFAULT_MODEL);
   const chapterTitle = body.chapterTitle?.trim() || "Untitled Chapter";
   const chapterIndex = Number(body.chapterIndex || 1);
   const totalChapters = Number(body.totalChapters || 1);
   const detailLevel = normalizeDetailLevel(body.detailLevel);
   const promptConfig = mergePromptConfig(body.promptConfig);
-
-  if (!apiKey) {
-    return NextResponse.json({ error: "OpenRouter API key is required." }, { status: 400 });
-  }
 
   if (!body.chapterText || typeof body.chapterText !== "string") {
     return NextResponse.json({ error: "chapterText is required." }, { status: 400 });
@@ -74,7 +68,6 @@ export async function POST(request: Request) {
 
   try {
     const result = await callOpenRouter({
-      apiKey,
       model,
       messages: buildChapterMessages({
         config: promptConfig,

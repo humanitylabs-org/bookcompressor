@@ -1,127 +1,113 @@
 # Book Compressor
 
-Book Compressor is a transient EPUB summarization tool.
+Book Compressor is a local-first EPUB compression tool.
 
 - Upload an EPUB
-- Parse chapters in the browser
-- Run chapter-by-chapter compression through OpenRouter (1, 2, or 3 passes)
-- Use Claude Haiku 4.5 as the default baseline model
-- Enable optional per-pass model routing (for cheaper early passes)
-- Preview chapter count and estimated API call volume before starting
-- Stop an in-flight run from the UI
-- Restore prior output from local browser checkpoint after refresh
-- Edit all prompt modules directly in the UI before each run
+- Parse chapters in-browser
+- Generate a chapter-by-chapter walkthrough
 - Generate a final book synthesis
-- Download all outputs as a ZIP file
-- Open `/viewer` to upload a result ZIP and browse chapters in a mobile-friendly reader UI
-- Main compressor page includes direct Viewer links and uses matching markdown render principles for output preview
+- Download a viewer-ready ZIP
+- Open `/viewer` for sidebar/mobile reading
 
-## Core Constraints
+## Mini-app mode (Tailnet app)
+
+This project is now structured to run as a **local "hosted by you" app**.
+
+Default path:
+- `https://<device>.ts.net/bookcompressor`
+
+Default base path in this repo:
+- `/bookcompressor`
+
+You can override it at build/start time with:
+- `NEXT_PUBLIC_BASE_PATH`
+- or `BOOK_COMPRESSOR_BASE_PATH`
+
+## Key handling (no key field in UI)
+
+The app no longer asks users to paste an API key in the form.
+
+It reads the OpenRouter key from environment config on the machine running the app.
+
+Supported env names:
+- `OPENROUTER_API_KEY` (recommended)
+- `OPENROUTER_KEY`
+- `OPENROUTER_API_TOKEN`
+- `AI_API_KEY`
+- `LLM_API_KEY`
+
+## Core constraints
 
 - No database
 - No Supabase
-- No persistent content storage
-- BYOK (bring your own OpenRouter API key)
+- No persistent source-book storage
+- Transient processing pipeline
 
-## Privacy Model
-
-Book source files are parsed in-browser.
-Only chapter text needed for each request is sent to server routes for inference.
-This app is designed for transient processing and does not intentionally persist source book content.
-
-## Legal Model
-
-Users must attest they have rights or permission to process uploaded content.
-This project is a utility tool and does not integrate with any piracy site or content acquisition flow.
-
-## Local Development
+## Local development
 
 ```bash
 npm install
-npm run dev
+export OPENROUTER_API_KEY="sk-or-v1-..."
+export NEXT_PUBLIC_BASE_PATH="/bookcompressor"
+npm run dev -- --hostname 127.0.0.1 --port 3000
 ```
 
-Open http://localhost:3000
+Open:
+- `http://localhost:3000/bookcompressor`
 
-## Build Check
+Viewer:
+- `http://localhost:3000/bookcompressor/viewer`
+
+## Standard lifecycle scripts
 
 ```bash
-npm run build
+# install deps
+./scripts/install.sh
+
+# start in prod mode (build + next start)
+./scripts/start.sh
+
+# stop
+./scripts/stop.sh
+
+# status + recent logs
+./scripts/status.sh
+
+# configure tailscale path mapping
+./scripts/serve-path.sh
+
+# merge upstream main into your fork branch
+./scripts/update-upstream.sh
 ```
 
-## Deploy to Vercel
+Optional runtime env vars:
+- `BOOK_COMPRESSOR_MODE=prod|dev` (default `prod`)
+- `BOOK_COMPRESSOR_HOST=127.0.0.1` (default `127.0.0.1`)
+- `BOOK_COMPRESSOR_PORT=3000` (default `3000`)
+- `NEXT_PUBLIC_BASE_PATH=/bookcompressor` (default `/bookcompressor`)
 
-### Option A: From GitHub
-1. Push this repo to GitHub.
-2. Import the repo in Vercel.
-3. Deploy.
+## API routes
 
-### Option B: From CLI
-```bash
-npm i -g vercel
-vercel
-vercel --prod
-```
+With default base path `/bookcompressor`, the effective routes are:
 
-No environment variables are required for MVP operation.
+- `POST /bookcompressor/api/summarize-chapter`
+- `POST /bookcompressor/api/synthesize-book`
+- `GET /bookcompressor/api/health`
 
-## Prompt Editing
+## Privacy model
 
-The setup panel exposes all live prompts used by the pipeline:
-- Pass 1 system + user
-- Pass 2 system + user
-- Pass 3 system + user
-- Book synthesis system + user
+Book source files are parsed in-browser.
+Only chapter text needed for inference is sent through app routes.
 
-Users can edit prompts before clicking **Start Compression**.
-Reloading the page resets prompt text to default values.
+## Legal model
 
-## Run Modes
+Users must have rights or permission to process uploaded content.
 
-- 1 pass: fastest and lowest cost
-- 2 passes: adds quality review + revision
-- 3 passes: deepest quality mode
+## Fork + re-sync workflow
 
-## Cost / Call Safety
+- Fork and customize freely.
+- Later, merge upstream updates using `./scripts/update-upstream.sh`.
 
-Before each run, the UI shows an estimate for:
-- selected chapter count
-- expected model call count
-- approximate cost (when OpenRouter pricing is available)
-
-Use Max Chapters + Pass Mode to control spend.
-
-Supported placeholders inside user prompts:
-- `{{chapter_index}}`
-- `{{total_chapters}}`
-- `{{chapter_title}}`
-- `{{target_length}}`
-- `{{chapter_text}}`
-- `{{pass_one_output}}`
-- `{{pass_two_output}}`
-- `{{book_title}}`
-- `{{chapter_summaries}}`
-
-## Viewer Route
-
-- `/viewer`
-  - Client-side ZIP viewer for Book Compressor outputs
-  - Parses ZIP locally (no server upload)
-  - Sidebar chapter navigation + responsive mobile chapter drawer
-
-## API Routes
-
-- `POST /api/summarize-chapter`
-  - Input: `apiKey`, `model`, `chapterTitle`, `chapterText`, `chapterIndex`, `totalChapters`, `detailLevel`, `passCount`, `promptConfig`, `modelRouting`
-  - Output: pass outputs + final chapter summary
-
-- `POST /api/synthesize-book`
-  - Input: `apiKey`, `model`, `bookTitle`, `chapterSummaries[]`, `promptConfig`, `modelRouting`
-  - Output: full book compression
-
-## Notes
-
-- OpenRouter requests are sent with provider preferences:
-  - `data_collection: "deny"`
-  - `zdr: true`
-- Chapter inputs are size-limited server-side for reliability.
+This supports both modes:
+1. Own and customize your fork
+2. Re-sync with latest main whenever needed

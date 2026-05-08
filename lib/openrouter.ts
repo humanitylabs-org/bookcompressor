@@ -4,7 +4,7 @@ export type OpenRouterMessage = {
 };
 
 export type OpenRouterCallOptions = {
-  apiKey: string;
+  apiKey?: string;
   model: string;
   messages: OpenRouterMessage[];
   temperature?: number;
@@ -20,6 +20,29 @@ export type OpenRouterResult = {
   };
 };
 
+const OPENROUTER_KEY_ENV_CANDIDATES = [
+  "OPENROUTER_API_KEY",
+  "OPENROUTER_KEY",
+  "OPENROUTER_API_TOKEN",
+  "AI_API_KEY",
+  "LLM_API_KEY",
+] as const;
+
+function resolveOpenRouterApiKey(explicitApiKey?: string): string {
+  const fromRequest = explicitApiKey?.trim();
+  if (fromRequest) return fromRequest;
+
+  for (const candidate of OPENROUTER_KEY_ENV_CANDIDATES) {
+    const value = process.env[candidate]?.trim();
+    if (value) return value;
+  }
+
+  const names = OPENROUTER_KEY_ENV_CANDIDATES.join(", ");
+  throw new Error(
+    `OpenRouter API key not configured. Set one of: ${names}.`,
+  );
+}
+
 export async function callOpenRouter({
   apiKey,
   model,
@@ -27,12 +50,14 @@ export async function callOpenRouter({
   temperature = 0.4,
   maxTokens = 1100,
 }: OpenRouterCallOptions): Promise<OpenRouterResult> {
+  const resolvedApiKey = resolveOpenRouterApiKey(apiKey);
+
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-      "HTTP-Referer": process.env.OPENROUTER_REFERER || "https://book-compressor.vercel.app",
+      Authorization: `Bearer ${resolvedApiKey}`,
+      "HTTP-Referer": process.env.OPENROUTER_REFERER || "https://bookcompressor.local",
       "X-Title": "Book Compressor",
     },
     body: JSON.stringify({

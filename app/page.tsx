@@ -9,6 +9,7 @@ import remarkGfm from "remark-gfm";
 import rehypeSanitize from "rehype-sanitize";
 import { DEFAULT_PROMPT_CONFIG } from "@/lib/prompts";
 import type { DetailLevel, PromptConfig } from "@/lib/prompts";
+import { withBasePath } from "@/lib/base-path";
 
 const DEFAULT_BASELINE_MODEL = "anthropic/claude-haiku-4.5";
 
@@ -538,7 +539,6 @@ async function parseEpubInBrowser(file: File): Promise<ParsedBook> {
 export default function Home() {
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  const [apiKey, setApiKey] = useState("");
   const [chapterModel, setChapterModel] = useState(DEFAULT_BASELINE_MODEL);
   const [synthesisModel, setSynthesisModel] = useState(DEFAULT_BASELINE_MODEL);
   const [detailLevel, setDetailLevel] = useState<DetailLevel>("balanced");
@@ -819,11 +819,6 @@ export default function Home() {
     setBookSynthesis("");
     setResumeNotice(null);
 
-    if (!apiKey.trim()) {
-      setError("OpenRouter API key is required.");
-      return;
-    }
-
     if (!epubFile) {
       setError("Please upload an EPUB file.");
       return;
@@ -882,7 +877,6 @@ export default function Home() {
         try {
           const payload = await postJsonWithTimeout<
             {
-              apiKey: string;
               model: string;
               chapterTitle: string;
               chapterText: string;
@@ -898,9 +892,8 @@ export default function Home() {
               processedChars?: number;
             }
           >(
-            "/api/summarize-chapter",
+            withBasePath("/api/summarize-chapter"),
             {
-              apiKey: apiKey.trim(),
               model: chapterModel.trim() || DEFAULT_BASELINE_MODEL,
               chapterTitle: chapter.chapterTitle,
               chapterText: chapter.chapterText,
@@ -952,7 +945,6 @@ export default function Home() {
 
         const synthesisPayload = await postJsonWithTimeout<
           {
-            apiKey: string;
             model: string;
             bookTitle: string;
             chapterSummaries: Array<{ chapterIndex: number; chapterTitle: string; summary: string }>;
@@ -963,9 +955,8 @@ export default function Home() {
             error?: string;
           }
         >(
-          "/api/synthesize-book",
+          withBasePath("/api/synthesize-book"),
           {
-            apiKey: apiKey.trim(),
             model: synthesisModel.trim() || DEFAULT_BASELINE_MODEL,
             bookTitle: parsed.bookTitle,
             chapterSummaries: doneNow,
@@ -1078,23 +1069,15 @@ export default function Home() {
           <section className="card">
             <h2 className="card__title">Compression Setup</h2>
             <p className="card__subtitle">
-              Single-pass compression. Defaults to Claude Haiku 4.5; swap to Sonnet for richer
-              walkthroughs.
+              Uses your device's shared OpenRouter key. Defaults to Claude Haiku 4.5; switch
+              models if you want richer output.
             </p>
 
-            <form onSubmit={handleCompress}>
-              <label className="field">
-                <span className="field__label">OpenRouter API Key</span>
-                <input
-                  className="input"
-                  type="password"
-                  autoComplete="off"
-                  value={apiKey}
-                  onChange={(event) => setApiKey(event.target.value)}
-                  placeholder="sk-or-v1-..."
-                />
-              </label>
+            <div className="alert alert--info" style={{ marginBottom: 14 }}>
+              This app reads the OpenRouter key from environment config (not from this form).
+            </div>
 
+            <form onSubmit={handleCompress}>
               <label className="field">
                 <span className="field__label">Chapter Model</span>
                 <input
