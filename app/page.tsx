@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { DragEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import JSZip from "jszip";
 import slugify from "slugify";
@@ -45,6 +45,16 @@ type ChapterResult = {
 type PreRunEstimate = {
   chapterCount: number;
   callCount: number;
+};
+
+type LibraryBookItem = {
+  id: string;
+  bookTitle: string;
+  createdAt: string;
+  updatedAt: string;
+  chapterCount: number;
+  hasSynthesis: boolean;
+  source?: string;
 };
 
 const PROMPT_FIELD_META: Array<{
@@ -529,6 +539,7 @@ export default function Home() {
   const [parsedBookCache, setParsedBookCache] = useState<ParsedBook | null>(null);
   const [parsedFileKey, setParsedFileKey] = useState("");
   const [isInspectingFile, setIsInspectingFile] = useState(false);
+  const [isDropActive, setIsDropActive] = useState(false);
 
   const [promptConfig, setPromptConfig] = useState<PromptConfig>({
     ...DEFAULT_PROMPT_CONFIG,
@@ -539,9 +550,15 @@ export default function Home() {
   const [bookSynthesis, setBookSynthesis] = useState("");
 
   const [isRunning, setIsRunning] = useState(false);
+  const [isSavingBook, setIsSavingBook] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [statusLine, setStatusLine] = useState("Idle");
   const [resumeNotice, setResumeNotice] = useState<string | null>(null);
+  const [savedBookId, setSavedBookId] = useState<string | null>(null);
+
+  const [libraryBooks, setLibraryBooks] = useState<LibraryBookItem[]>([]);
+  const [isLibraryLoading, setIsLibraryLoading] = useState(true);
+  const [libraryError, setLibraryError] = useState<string | null>(null);
 
   const completedCount = chapterResults.filter(
     (result) => result.status === "done" || result.status === "failed",
@@ -572,6 +589,132 @@ export default function Home() {
       callCount: selected.length + 1,
     };
   }, [parsedBookCache, maxChapters]);
+
+  const loadLibrary = async () => {
+    setIsLibraryLoading(true);
+    setLibraryError(null);
+
+    try {
+      const response = await fetch(withBasePath("/api/books"), { cache: "no-store" });
+      const data = (await response.json()) as { books?: LibraryBookItem[]; error?: string };
+
+      if (!response.ok) {
+        throw new Error(data.error || `Failed to load books (${response.status}).`);
+      }
+
+      setLibraryBooks(Array.isArray(data.books) ? data.books : []);
+    } catch (libraryLoadError) {
+      const message =
+        libraryLoadError instanceof Error ? libraryLoadError.message : "Failed to load books.";
+      setLibraryError(message);
+    } finally {
+      setIsLibraryLoading(false);
+    }
+  };
+
+  const saveRunToLibrary = async (input: {
+    bookTitle: string;
+    detectionMethod?: string;
+    chapters: Array<{
+      chapterIndex: number;
+      chapterTitle: string;
+      summary: string;
+      truncated?: boolean;
+      originalChars?: number;
+      processedChars?: number;
+    }>;
+    synthesis?: string;
+  }) => {
+    setIsSavingBook(true);
+    try {
+      const response = await fetch(withBasePath("/api/books"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          bookTitle: input.bookTitle,
+          detectionMethod: input.detectionMethod || null,
+          source: "web-upload-fallback",
+          settings: {
+            chapterModel,
+            synthesisModel,
+            detailLevel,
+            maxChapters,
+          },
+          chapters: input.chapters,
+          synthesis: input.synthesis || null,
+        }),
+      });
+
+      const data = (await response.json()) as {
+        book?: { id: string };
+        error?: string;
+      };
+
+      if (!response.ok || !data.book?.id) {
+        throw new Error(data.error || `Failed to save book (${response.status}).`);
+      }
+
+      setSavedBookId(data.book.id);
+      await loadLibrary();
+      return data.book.id;
+    } finally {
+      setIsSavingBook(false);
+    }
+  };
+
+  const handleDeleteBook = async (bookId: string) => {
+    const confirmed = window.confirm("Delete this saved book from local history?");
+    if (!confirmed) return;
+
+    try {
+      const response = await fetch(withBasePath(`/api/books/${bookId}`), {
+        method: "DELETE",
+      });
+
+      const data = (await response.json().catch(() => null)) as { error?: string } | null;
+      if (!response.ok) {
+        throw new Error(data?.error || `Delete failed (${response.status}).`);
+      }
+
+      setLibraryBooks((previous) => previous.filter((book) => book.id !== bookId));
+      if (savedBookId === bookId) setSavedBookId(null);
+    } catch (deleteError) {
+      const message = deleteError instanceof Error ? deleteError.message : "Failed to delete book.";
+      setLibraryError(message);
+    }
+  };
+
+  const handleClearAllBooks = async () => {
+    const confirmed = window.confirm(
+      "Clear all saved books from local history on this machine?",
+    );
+    if (!confirmed) return;
+
+    try {
+      const response = await fetch(withBasePath("/api/books"), {
+        method: "DELETE",
+      });
+
+      const data = (await response.json().catch(() => null)) as { error?: string } | null;
+      if (!response.ok) {
+        throw new Error(data?.error || `Clear failed (${response.status}).`);
+      }
+
+      setLibraryBooks([]);
+      setSavedBookId(null);
+      setLibraryError(null);
+    } catch (clearError) {
+      const message =
+        clearError instanceof Error ? clearError.message : "Failed to clear book history.";
+      setLibraryError(message);
+    }
+  };
+
+  useEffect(() => {
+    void loadLibrary();
+  }, []);
 
   useEffect(() => {
     try {
@@ -674,6 +817,7 @@ export default function Home() {
     setChapterResults([]);
     setBookSynthesis("");
     setResumeNotice(null);
+    setSavedBookId(null);
     setStatusLine("Idle");
     try {
       localStorage.removeItem(RUN_STORAGE_KEY);
@@ -686,6 +830,24 @@ export default function Home() {
     if (!isRunning) return;
     abortControllerRef.current?.abort();
     setStatusLine("Stopping after current request...");
+  };
+
+  const handleDropZoneDragOver = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDropActive(true);
+  };
+
+  const handleDropZoneDragLeave = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDropActive(false);
+  };
+
+  const handleDropZoneDrop = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDropActive(false);
+    const file = event.dataTransfer?.files?.[0] || null;
+    if (!file) return;
+    void handleFileSelection(file);
   };
 
   const handleFileSelection = async (file: File | null) => {
@@ -724,6 +886,7 @@ export default function Home() {
     setError(null);
     setBookSynthesis("");
     setResumeNotice(null);
+    setSavedBookId(null);
 
     if (!epubFile) {
       setError("Please upload an EPUB file.");
@@ -772,7 +935,14 @@ export default function Home() {
         })),
       );
 
-      const doneNow: Array<{ chapterIndex: number; chapterTitle: string; summary: string }> = [];
+      const doneNow: Array<{
+        chapterIndex: number;
+        chapterTitle: string;
+        summary: string;
+        truncated?: boolean;
+        originalChars?: number;
+        processedChars?: number;
+      }> = [];
 
       for (const chapter of selectedChapters) {
         if (runController.signal.aborted) break;
@@ -824,6 +994,9 @@ export default function Home() {
               chapterIndex: chapter.chapterIndex,
               chapterTitle: chapter.chapterTitle,
               summary: payload.finalSummary,
+              truncated: payload.truncated,
+              originalChars: payload.originalChars,
+              processedChars: payload.processedChars,
             });
           }
         } catch (chapterError) {
@@ -847,6 +1020,7 @@ export default function Home() {
       }
 
       if (doneNow.length) {
+        let finalSynthesis = "";
         setStatusLine("Synthesizing full book output...");
 
         const synthesisPayload = await postJsonWithTimeout<
@@ -872,13 +1046,28 @@ export default function Home() {
         );
 
         if (synthesisPayload.finalSynthesis) {
+          finalSynthesis = synthesisPayload.finalSynthesis;
           setBookSynthesis(synthesisPayload.finalSynthesis);
+        }
+
+        setStatusLine("Saving to local library...");
+        try {
+          const bookId = await saveRunToLibrary({
+            bookTitle: parsed.bookTitle,
+            detectionMethod: parsed.detectionMethod,
+            chapters: doneNow,
+            synthesis: finalSynthesis,
+          });
+          setStatusLine(`Done. Saved as /books/${bookId}.`);
+        } catch (saveError) {
+          const message = saveError instanceof Error ? saveError.message : "Unknown save failure.";
+          setError(`Compression finished, but saving failed: ${message}`);
+          setStatusLine("Done, but failed to save in local library.");
         }
       } else {
         setError("No chapters completed successfully, so synthesis was skipped.");
+        setStatusLine("No successful chapters to save.");
       }
-
-      setStatusLine("Done.");
     } catch (runError) {
       const message = runError instanceof Error ? runError.message : "Compression failed.";
       setError(message);
@@ -960,9 +1149,9 @@ export default function Home() {
         <section className="hero">
           <h1 className="hero__title">Book Compressor</h1>
           <p className="hero__sub">
-            Upload an EPUB, get a Vajra-style walkthrough for every chapter plus a book-level
-            synthesis, and download as a viewer-ready ZIP. Processing is transient — content is
-            not persisted.
+            Chat-first workflow: send EPUB files to your AI gateway (Telegram, UseMyClaw, TUI, etc)
+            and keep a local permalink library on this machine. Use the web uploader only as a
+            fallback for large files or direct/manual runs.
           </p>
           <div className="hero__actions">
             <Link className="button button--ghost button-link" href="/viewer">
@@ -973,14 +1162,14 @@ export default function Home() {
 
         <div className="grid">
           <section className="card">
-            <h2 className="card__title">Compression Setup</h2>
+            <h2 className="card__title">Settings + Upload Fallback</h2>
             <p className="card__subtitle">
-              Uses this host's OpenClaw-connected AI model by default. You can optionally set a
-              specific model override per run.
+              Primary path is chat-based ingestion through your AI gateway. These settings control
+              local runs and are reused when saving compressed books to local permalinks.
             </p>
 
             <div className="alert alert--info" style={{ marginBottom: 14 }}>
-              No API key field required in this form. The server handles model access.
+              No API key field required in this form. The host's OpenClaw model access is used by default.
             </div>
 
             <form onSubmit={handleCompress}>
@@ -1037,7 +1226,15 @@ export default function Home() {
               </label>
 
               <label className="field">
-                <span className="field__label">EPUB File</span>
+                <span className="field__label">EPUB File (web fallback upload)</span>
+                <div
+                  className={`dropzone ${isDropActive ? "dropzone--active" : ""}`}
+                  onDragOver={handleDropZoneDragOver}
+                  onDragLeave={handleDropZoneDragLeave}
+                  onDrop={handleDropZoneDrop}
+                >
+                  Drag and drop an EPUB here, or use the file picker below.
+                </div>
                 <input
                   className="file"
                   type="file"
@@ -1051,7 +1248,7 @@ export default function Home() {
                     ? "Inspecting EPUB..."
                     : parsedBookCache
                       ? `Detected ${parsedBookCache.chapters.length} chapters.`
-                      : "Select a file to pre-calculate chapter count before running."}
+                      : "Fallback mode: select a file for a direct web run if chat upload is not convenient."}
                 </p>
               </label>
 
@@ -1147,19 +1344,19 @@ export default function Home() {
               </div>
 
               <p className="hint" style={{ marginTop: 12 }}>
-                After downloading a ZIP, open <Link href="/viewer">/viewer</Link> for a chapter
-                sidebar + mobile-friendly reading layout.
+                Each successful run is saved to local history with permalink format <code>/books/&lt;id&gt;</code>.
+                You can still open <Link href="/viewer">/viewer</Link> for ZIP-based browsing.
               </p>
             </form>
 
             <div className="legal">
               <p>
-                <strong>Privacy:</strong> source content is processed transiently and not persisted
-                by this app.
+                <strong>Privacy:</strong> source content is processed on this machine. Saved outputs
+                stay local in this machine's runtime storage.
               </p>
               <p>
-                <strong>Runtime:</strong> if you refresh, in-flight processing stops. Checkpointed
-                output is restored from local browser storage.
+                <strong>Runtime:</strong> if you refresh, in-flight processing stops. Latest run output
+                is checkpointed in browser storage, and completed runs are saved as local permalinks.
               </p>
               <p>
                 <strong>Legal:</strong> do not upload material unless you have rights or permission
@@ -1169,10 +1366,94 @@ export default function Home() {
           </section>
 
           <section className="card">
-            <h2 className="card__title">Run Output</h2>
+            <h2 className="card__title">Local Library + Latest Fallback Run</h2>
             <p className="card__subtitle">
-              {bookTitle ? `Book: ${bookTitle}` : "No book processed yet."} This preview follows
-              the same markdown rendering style as the Viewer.
+              Saved books live on this machine and are exposed via local permalinks.
+            </p>
+
+            {savedBookId ? (
+              <div className="alert alert--info">
+                Saved successfully: <Link href={`/books/${savedBookId}`}>/books/{savedBookId}</Link>
+              </div>
+            ) : null}
+
+            <div className="button-row" style={{ marginBottom: 10 }}>
+              <button
+                className="button button--ghost"
+                type="button"
+                onClick={() => {
+                  void loadLibrary();
+                }}
+                disabled={isLibraryLoading}
+              >
+                {isLibraryLoading ? "Refreshing..." : "Refresh Library"}
+              </button>
+              <button
+                className="button button--ghost"
+                type="button"
+                onClick={() => {
+                  void handleClearAllBooks();
+                }}
+                disabled={isLibraryLoading || !libraryBooks.length}
+              >
+                Clear All Data
+              </button>
+            </div>
+
+            {libraryError ? <div className="alert alert--error">{libraryError}</div> : null}
+
+            {isLibraryLoading ? (
+              <div className="alert alert--info">Loading local library...</div>
+            ) : !libraryBooks.length ? (
+              <div className="alert alert--info">No saved books yet.</div>
+            ) : (
+              <div className="library-list">
+                {libraryBooks.map((book) => (
+                  <article className="library-item" key={book.id}>
+                    <div>
+                      <p className="library-item__title">
+                        <Link href={`/books/${book.id}`}>{book.bookTitle}</Link>
+                      </p>
+                      <p className="library-item__meta">
+                        {new Date(book.createdAt).toLocaleString()} · {book.chapterCount} chapters
+                        {book.hasSynthesis ? " · synthesis" : ""}
+                      </p>
+                      <p className="library-item__meta">
+                        <code>/books/{book.id}</code>
+                      </p>
+                    </div>
+
+                    <div className="library-item__actions">
+                      <a className="button button--ghost button-link" href={withBasePath(`/books/${book.id}`)}>
+                        Open
+                      </a>
+                      <a
+                        className="button button--ghost button-link"
+                        href={withBasePath(`/api/books/${book.id}/zip`)}
+                      >
+                        ZIP
+                      </a>
+                      <button
+                        className="button button--ghost"
+                        type="button"
+                        onClick={() => {
+                          void handleDeleteBook(book.id);
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+
+            <hr className="library-divider" />
+
+            <h3 className="card__title">Current Fallback Upload Run</h3>
+            <p className="card__subtitle">
+              {bookTitle ? `Book: ${bookTitle}` : "No fallback run active."}
+              {isSavingBook ? " Saving to local library..." : ""}
             </p>
 
             {resumeNotice ? <div className="alert alert--info">{resumeNotice}</div> : null}
@@ -1183,9 +1464,7 @@ export default function Home() {
             </div>
 
             {!chapterResults.length ? (
-              <div className="alert alert--info">
-                Start a run to see chapter-by-chapter output.
-              </div>
+              <div className="alert alert--info">Run a fallback upload to preview chapter output here.</div>
             ) : (
               <div className="chapter-list">
                 {chapterResults.map((chapter) => (
@@ -1231,7 +1510,7 @@ export default function Home() {
             ) : null}
 
             <p className="footer-note">
-              Output ZIP includes summary.json, chapter markdown files, and book-compression.md.
+              ZIP downloads include summary.json, chapter markdown files, and book-compression.md.
             </p>
           </section>
         </div>

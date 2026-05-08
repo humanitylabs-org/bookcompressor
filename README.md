@@ -2,12 +2,12 @@
 
 Book Compressor is a local-first EPUB compression tool.
 
-- Upload an EPUB
-- Parse chapters in-browser
-- Generate a chapter-by-chapter walkthrough
-- Generate a final book synthesis
-- Download a viewer-ready ZIP
-- Open `/viewer` for sidebar/mobile reading
+- Chat-first workflow (send EPUB to your AI gateway)
+- Local permalink library for completed compressions (`/books/<id>`)
+- Web upload fallback (drag/drop + file picker) for large/direct runs
+- Generate chapter-by-chapter walkthroughs + final synthesis
+- Download ZIP artifacts per saved book
+- Open `/viewer` for ZIP-based sidebar/mobile reading
 
 ## Mini-app mode (Tailnet app)
 
@@ -45,8 +45,8 @@ Optional fallback mode:
 
 - No database
 - No Supabase
-- No persistent source-book storage
-- Transient processing pipeline
+- No persistent raw source-book storage by default
+- Saved outputs are local JSON records on this machine (`.runtime/books/*.json`)
 
 ## Local development
 
@@ -109,11 +109,24 @@ With default base path `/bookcompressor`, the effective routes are:
 - `POST /bookcompressor/api/summarize-chapter`
 - `POST /bookcompressor/api/synthesize-book`
 - `GET /bookcompressor/api/health`
+- `GET /bookcompressor/api/books` (list local saved books)
+- `POST /bookcompressor/api/books` (save a completed compression)
+- `DELETE /bookcompressor/api/books` (clear all saved books)
+- `GET /bookcompressor/api/books/:id` (load one saved book)
+- `DELETE /bookcompressor/api/books/:id` (delete one saved book)
+- `GET /bookcompressor/api/books/:id/zip` (download ZIP artifact)
+
+Permalink pages:
+- `/bookcompressor/books/:id`
 
 ## Privacy model
 
-Book source files are parsed in-browser.
-Only chapter text needed for inference is sent through app routes.
+Book processing runs on this machine.
+
+By default:
+- raw source-book content is not permanently stored by the app
+- completed outputs (chapter summaries + synthesis + metadata) are saved locally in `.runtime/books/`
+- no external database is used
 
 ## Legal model
 

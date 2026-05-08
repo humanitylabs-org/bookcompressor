@@ -148,6 +148,22 @@ a {
   line-height: 1.45;
 }
 
+.dropzone {
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--text-subtle);
+  padding: 12px;
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+
+.dropzone--active {
+  border-color: #6d6d78;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+
 .prompt-editor {
   margin-bottom: 14px;
   border: 1px solid var(--border);
@@ -299,6 +315,67 @@ a {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.library-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.library-item {
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.02);
+  padding: 12px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.library-item__title {
+  margin: 0 0 5px;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.library-item__title a {
+  text-decoration: none;
+}
+
+.library-item__title a:hover {
+  text-decoration: underline;
+}
+
+.library-item__meta {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-subtle);
+  line-height: 1.45;
+}
+
+.library-item__meta code {
+  font-family: var(--font-plex-mono), "IBM Plex Mono", monospace;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 11px;
+}
+
+.library-item__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.library-divider {
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.13);
+  margin: 16px 0;
 }
 
 .chapter-card {
@@ -798,5 +875,13 @@ a {
 
   .bcv-main__meta h2 {
     font-size: 22px;
+  }
+
+  .library-item {
+    flex-direction: column;
+  }
+
+  .library-item__actions {
+    justify-content: flex-start;
   }
 }
