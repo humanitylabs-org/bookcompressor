@@ -6,8 +6,7 @@ Book Compressor is a local-first EPUB compression tool.
 - Local permalink library for completed compressions (`/<id>`)
 - Web upload fallback (drag/drop + file picker) for large/direct runs
 - Generate chapter-by-chapter walkthroughs + final synthesis
-- Download ZIP artifacts per saved book
-- Open `/viewer` for ZIP-based sidebar/mobile reading
+- Export/import library JSON so users can share analyses without reprocessing EPUBs
 
 ## Mini-app mode (Tailnet app)
 
@@ -65,9 +64,6 @@ Prerequisite for default mode:
 
 Open:
 - `http://localhost:3000/bookcompressor`
-
-Viewer:
-- `http://localhost:3000/bookcompressor/viewer`
 
 ## Standard lifecycle scripts
 
@@ -132,9 +128,11 @@ With default base path `/bookcompressor`, the effective routes are:
 - `GET /bookcompressor/api/books` (list local saved books)
 - `POST /bookcompressor/api/books` (save a completed compression)
 - `DELETE /bookcompressor/api/books` (clear all saved books)
+- `GET /bookcompressor/api/books/export` (export full local library as JSON)
+- `POST /bookcompressor/api/books/import` (import one/many books into local library)
 - `GET /bookcompressor/api/books/:id` (load one saved book)
 - `DELETE /bookcompressor/api/books/:id` (delete one saved book)
-- `GET /bookcompressor/api/books/:id/zip` (download ZIP artifact)
+- `GET /bookcompressor/api/books/:id/export` (export one book as JSON)
 
 Permalink pages:
 - `/bookcompressor/:id`

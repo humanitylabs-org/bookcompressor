@@ -1,7 +1,5 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import JSZip from "jszip";
-import slugify from "slugify";
 
 const BOOKS_DIR = path.join(process.cwd(), ".runtime", "books");
 
@@ -194,65 +192,5 @@ export async function clearAllBooks(): Promise<number> {
   }
 
   return deleted;
-}
-
-export async function buildBookZip(book: StoredBook): Promise<{ buffer: Buffer; filename: string }> {
-  const zip = new JSZip();
-
-  const summaryJson = {
-    generatedAt: book.createdAt,
-    bookTitle: book.bookTitle,
-    chapterModel: book.settings.chapterModel || "",
-    synthesisModel: book.settings.synthesisModel || "",
-    detailLevel: book.settings.detailLevel || "balanced",
-    detectionMethod: book.detectionMethod || null,
-    chapters: book.chapters.map((chapter) => ({
-      chapterIndex: chapter.chapterIndex,
-      chapterTitle: chapter.chapterTitle,
-      summary: chapter.summary,
-      truncated: chapter.truncated || false,
-      originalChars: chapter.originalChars,
-      processedChars: chapter.processedChars,
-    })),
-    synthesis: book.synthesis || null,
-  };
-
-  zip.file("summary.json", JSON.stringify(summaryJson, null, 2));
-
-  const chaptersFolder = zip.folder("chapters");
-  for (const chapter of book.chapters) {
-    const chapterSlug =
-      slugify(chapter.chapterTitle, {
-        lower: true,
-        strict: true,
-        trim: true,
-      }) || "chapter";
-
-    const filename = `${String(chapter.chapterIndex).padStart(2, "0")}-${chapterSlug}.md`;
-    chaptersFolder?.file(
-      filename,
-      `# Chapter ${chapter.chapterIndex}: ${chapter.chapterTitle}\n\n${chapter.summary}\n`,
-    );
-  }
-
-  zip.file(
-    "book-compression.md",
-    book.synthesis?.trim()
-      ? `# ${book.bookTitle}\n\n${book.synthesis}\n`
-      : "# Book Compression\n\nNo synthesis available.\n",
-  );
-
-  const buffer = await zip.generateAsync({ type: "nodebuffer" });
-  const safeName =
-    slugify(book.bookTitle, {
-      lower: true,
-      strict: true,
-      trim: true,
-    }) || "book-compression";
-
-  return {
-    buffer,
-    filename: `${safeName}.zip`,
-  };
 }
 

@@ -3,10 +3,6 @@
 import { DragEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import JSZip from "jszip";
-import slugify from "slugify";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import rehypeSanitize from "rehype-sanitize";
 import { DEFAULT_PROMPT_CONFIG } from "@/lib/prompts";
 import type { DetailLevel, PromptConfig } from "@/lib/prompts";
 import { withBasePath } from "@/lib/base-path";
@@ -56,17 +52,6 @@ type LibraryBookItem = {
   hasSynthesis: boolean;
   source?: string;
 };
-
-const PROMPT_FIELD_META: Array<{
-  key: keyof PromptConfig;
-  label: string;
-  rows: number;
-}> = [
-  { key: "chapterSystem", label: "Chapter System Prompt", rows: 8 },
-  { key: "chapterUser", label: "Chapter User Prompt", rows: 14 },
-  { key: "bookSystem", label: "Book Synthesis System Prompt", rows: 6 },
-  { key: "bookUser", label: "Book Synthesis User Prompt", rows: 14 },
-];
 
 function cleanText(input: string): string {
   return input.replace(/\s+/g, " ").trim();
@@ -541,9 +526,7 @@ export default function Home() {
   const [isInspectingFile, setIsInspectingFile] = useState(false);
   const [isDropActive, setIsDropActive] = useState(false);
 
-  const [promptConfig, setPromptConfig] = useState<PromptConfig>({
-    ...DEFAULT_PROMPT_CONFIG,
-  });
+  const promptConfig: PromptConfig = DEFAULT_PROMPT_CONFIG;
 
   const [bookTitle, setBookTitle] = useState("");
   const [chapterResults, setChapterResults] = useState<ChapterResult[]>([]);
@@ -559,6 +542,9 @@ export default function Home() {
   const [libraryBooks, setLibraryBooks] = useState<LibraryBookItem[]>([]);
   const [isLibraryLoading, setIsLibraryLoading] = useState(true);
   const [libraryError, setLibraryError] = useState<string | null>(null);
+  const [libraryNotice, setLibraryNotice] = useState<string | null>(null);
+  const [isImportingLibrary, setIsImportingLibrary] = useState(false);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
 
   const completedCount = chapterResults.filter(
     (result) => result.status === "done" || result.status === "failed",
@@ -712,6 +698,79 @@ export default function Home() {
     }
   };
 
+  const triggerDownload = (url: string, filename?: string) => {
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    if (filename) anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+  };
+
+  const handleExportLibrary = () => {
+    setLibraryError(null);
+    setLibraryNotice("Downloading library export...");
+    triggerDownload(withBasePath("/api/books/export"), "bookcompressor-library.json");
+  };
+
+  const handleExportBook = (bookId: string) => {
+    setLibraryError(null);
+    setLibraryNotice("Downloading book export...");
+    triggerDownload(
+      withBasePath(`/api/books/${bookId}/export`),
+      `bookcompressor-${bookId}.json`,
+    );
+  };
+
+  const handleImportLibraryFile = async (file: File | null) => {
+    if (!file) return;
+
+    setIsImportingLibrary(true);
+    setLibraryError(null);
+    setLibraryNotice(null);
+
+    try {
+      const text = await file.text();
+      let payload: unknown;
+      try {
+        payload = JSON.parse(text);
+      } catch {
+        throw new Error("Invalid JSON file.");
+      }
+
+      const response = await fetch(withBasePath("/api/books/import"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = (await response.json().catch(() => null)) as
+        | { imported?: number; error?: string }
+        | null;
+
+      if (!response.ok) {
+        throw new Error(data?.error || `Import failed (${response.status}).`);
+      }
+
+      const imported = typeof data?.imported === "number" ? data.imported : 0;
+      if (imported < 1) {
+        throw new Error("No valid books found in the import file.");
+      }
+
+      setLibraryNotice(`Imported ${imported} book${imported === 1 ? "" : "s"}.`);
+      await loadLibrary();
+    } catch (importError) {
+      const message =
+        importError instanceof Error ? importError.message : "Failed to import library file.";
+      setLibraryError(message);
+    } finally {
+      setIsImportingLibrary(false);
+      if (importInputRef.current) importInputRef.current.value = "";
+    }
+  };
+
   useEffect(() => {
     void loadLibrary();
   }, []);
@@ -802,14 +861,6 @@ export default function Home() {
         entry.chapterIndex === chapterIndex ? { ...entry, ...updates } : entry,
       ),
     );
-  };
-
-  const updatePromptField = (field: keyof PromptConfig, value: string) => {
-    setPromptConfig((previous) => ({ ...previous, [field]: value }));
-  };
-
-  const resetPromptsToDefault = () => {
-    setPromptConfig({ ...DEFAULT_PROMPT_CONFIG });
   };
 
   const clearOutput = () => {
@@ -1083,81 +1134,15 @@ export default function Home() {
     }
   };
 
-  const handleDownloadZip = async () => {
-    if (!successfulChapters.length) return;
-
-    const zip = new JSZip();
-    const safeBookName = slugify(bookTitle || "book-compression", {
-      lower: true,
-      strict: true,
-      trim: true,
-    });
-
-    const summaryJson = {
-      generatedAt: new Date().toISOString(),
-      bookTitle,
-      chapterModel,
-      synthesisModel,
-      detailLevel,
-      detectionMethod: parsedBookCache?.detectionMethod || null,
-      chapters: successfulChapters.map((chapter) => ({
-        chapterIndex: chapter.chapterIndex,
-        chapterTitle: chapter.chapterTitle,
-        summary: chapter.finalSummary,
-        truncated: chapter.truncated || false,
-        originalChars: chapter.originalChars,
-        processedChars: chapter.processedChars,
-      })),
-      synthesis: bookSynthesis || null,
-    };
-
-    zip.file("summary.json", JSON.stringify(summaryJson, null, 2));
-
-    const chaptersFolder = zip.folder("chapters");
-    successfulChapters.forEach((chapter) => {
-      const slug = slugify(chapter.chapterTitle, {
-        lower: true,
-        strict: true,
-        trim: true,
-      });
-
-      const filename = `${String(chapter.chapterIndex).padStart(2, "0")}-${slug || "chapter"}.md`;
-      const markdown = `# Chapter ${chapter.chapterIndex}: ${chapter.chapterTitle}\n\n${chapter.finalSummary || ""}\n`;
-      chaptersFolder?.file(filename, markdown);
-    });
-
-    const synthesisDoc = bookSynthesis
-      ? `# ${bookTitle || "Book Compression"}\n\n${bookSynthesis}\n`
-      : "# Book Compression\n\nNo synthesis available.\n";
-
-    zip.file("book-compression.md", synthesisDoc);
-
-    const blob = await zip.generateAsync({ type: "blob" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `${safeBookName || "book-compression"}.zip`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(url);
-  };
-
   return (
     <div className="page">
       <div className="shell">
         <section className="hero">
           <h1 className="hero__title">Book Compressor</h1>
           <p className="hero__sub">
-            Chat-first workflow: send EPUB files to your AI gateway (Telegram, UseMyClaw, TUI, etc)
-            and keep a local permalink library on this machine. Use the web uploader only as a
-            fallback for large files or direct/manual runs.
+            Send EPUB files through chat as your main flow. This page is just a simple fallback
+            uploader plus local permalinks you can share via export/import.
           </p>
-          <div className="hero__actions">
-            <Link className="button button--ghost button-link" href="/viewer">
-              Open Viewer
-            </Link>
-          </div>
         </section>
 
         <div className="grid">
@@ -1174,7 +1159,7 @@ export default function Home() {
 
             <form onSubmit={handleCompress}>
               <details className="prompt-editor" style={{ marginBottom: 14 }}>
-                <summary className="prompt-editor__summary">Advanced model overrides (optional)</summary>
+                <summary className="prompt-editor__summary">Optional controls</summary>
                 <label className="field">
                   <span className="field__label">Chapter Model</span>
                   <input
@@ -1199,33 +1184,33 @@ export default function Home() {
                     Leave both blank to use whatever model OpenClaw has available by default.
                   </p>
                 </label>
+
+                <label className="field">
+                  <span className="field__label">Detail Level</span>
+                  <select
+                    className="select"
+                    value={detailLevel}
+                    onChange={(event) => setDetailLevel(event.target.value as DetailLevel)}
+                  >
+                    <option value="tight">Tight</option>
+                    <option value="balanced">Balanced</option>
+                    <option value="deep">Deep</option>
+                  </select>
+                </label>
+
+                <label className="field">
+                  <span className="field__label">Max Chapters (0 = all)</span>
+                  <input
+                    className="input"
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={maxChapters}
+                    onChange={(event) => setMaxChapters(event.target.value)}
+                  />
+                  <p className="hint">Default is 0 (process all detected chapters).</p>
+                </label>
               </details>
-
-              <label className="field">
-                <span className="field__label">Detail Level</span>
-                <select
-                  className="select"
-                  value={detailLevel}
-                  onChange={(event) => setDetailLevel(event.target.value as DetailLevel)}
-                >
-                  <option value="tight">Tight</option>
-                  <option value="balanced">Balanced</option>
-                  <option value="deep">Deep</option>
-                </select>
-              </label>
-
-              <label className="field">
-                <span className="field__label">Max Chapters (0 = all)</span>
-                <input
-                  className="input"
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={maxChapters}
-                  onChange={(event) => setMaxChapters(event.target.value)}
-                />
-                <p className="hint">Default is 0 (process all detected chapters).</p>
-              </label>
 
               <label className="field">
                 <span className="field__label">EPUB File (web fallback upload)</span>
@@ -1264,41 +1249,6 @@ export default function Home() {
                 </div>
               ) : null}
 
-              <details className="prompt-editor">
-                <summary className="prompt-editor__summary">Advanced prompt modules (optional)</summary>
-                <p className="hint">
-                  Edit prompts for this run. Reloading the page resets prompt text to defaults.
-                </p>
-                <p className="prompt-vars">
-                  Placeholder variables: {"{{chapter_index}}"}, {"{{total_chapters}}"},{" "}
-                  {"{{chapter_title}}"}, {"{{target_length}}"}, {"{{chapter_text}}"},{" "}
-                  {"{{book_title}}"}, {"{{chapter_summaries}}"}
-                </p>
-                <div className="button-row" style={{ marginBottom: 12 }}>
-                  <button
-                    className="button button--ghost"
-                    type="button"
-                    onClick={resetPromptsToDefault}
-                  >
-                    Reset Prompts to Defaults
-                  </button>
-                </div>
-
-                <div className="prompt-grid">
-                  {PROMPT_FIELD_META.map((field) => (
-                    <label className="field" key={field.key}>
-                      <span className="field__label">{field.label}</span>
-                      <textarea
-                        className="textarea"
-                        rows={field.rows}
-                        value={promptConfig[field.key]}
-                        onChange={(event) => updatePromptField(field.key, event.target.value)}
-                      />
-                    </label>
-                  ))}
-                </div>
-              </details>
-
               <label className="checkbox">
                 <input
                   type="checkbox"
@@ -1328,15 +1278,6 @@ export default function Home() {
 
                 <button
                   className="button button--ghost"
-                  disabled={isRunning || !successfulChapters.length}
-                  type="button"
-                  onClick={handleDownloadZip}
-                >
-                  Download ZIP
-                </button>
-
-                <button
-                  className="button button--ghost"
                   disabled={isRunning || (!chapterResults.length && !bookSynthesis)}
                   type="button"
                   onClick={clearOutput}
@@ -1347,7 +1288,7 @@ export default function Home() {
 
               <p className="hint" style={{ marginTop: 12 }}>
                 Each successful run is saved to local history with permalink format <code>/&lt;id&gt;</code>.
-                You can still open <Link href="/viewer">/viewer</Link> for ZIP-based browsing.
+                Use library export/import to share analyses without reprocessing EPUBs.
               </p>
             </form>
 
@@ -1393,6 +1334,24 @@ export default function Home() {
               <button
                 className="button button--ghost"
                 type="button"
+                onClick={handleExportLibrary}
+                disabled={isLibraryLoading || !libraryBooks.length}
+              >
+                Export Library
+              </button>
+              <button
+                className="button button--ghost"
+                type="button"
+                onClick={() => {
+                  importInputRef.current?.click();
+                }}
+                disabled={isImportingLibrary}
+              >
+                {isImportingLibrary ? "Importing..." : "Import to Library"}
+              </button>
+              <button
+                className="button button--ghost"
+                type="button"
                 onClick={() => {
                   void handleClearAllBooks();
                 }}
@@ -1402,7 +1361,18 @@ export default function Home() {
               </button>
             </div>
 
+            <input
+              ref={importInputRef}
+              type="file"
+              accept="application/json,.json"
+              style={{ display: "none" }}
+              onChange={(event) => {
+                void handleImportLibraryFile(event.target.files?.[0] || null);
+              }}
+            />
+
             {libraryError ? <div className="alert alert--error">{libraryError}</div> : null}
+            {libraryNotice ? <div className="alert alert--info">{libraryNotice}</div> : null}
 
             {isLibraryLoading ? (
               <div className="alert alert--info">Loading local library...</div>
@@ -1429,12 +1399,15 @@ export default function Home() {
                       <a className="button button--ghost button-link" href={withBasePath(`/${book.id}`)}>
                         Open
                       </a>
-                      <a
+                      <button
                         className="button button--ghost button-link"
-                        href={withBasePath(`/api/books/${book.id}/zip`)}
+                        type="button"
+                        onClick={() => {
+                          handleExportBook(book.id);
+                        }}
                       >
-                        ZIP
-                      </a>
+                        Export
+                      </button>
                       <button
                         className="button button--ghost"
                         type="button"

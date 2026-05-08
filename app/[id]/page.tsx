@@ -33,8 +33,8 @@ export default async function BookPermalinkPage({ params }: PageProps) {
             <Link className="button button--ghost button-link" href="/">
               Back to Library
             </Link>
-            <a className="button button-link" href={`/api/books/${book.id}/zip`}>
-              Download ZIP
+            <a className="button button-link" href={`/api/books/${book.id}/export`}>
+              Export JSON
             </a>
           </div>
         </section>
@@ -76,4 +76,3 @@ export default async function BookPermalinkPage({ params }: PageProps) {
     </div>
   );
 }
-
