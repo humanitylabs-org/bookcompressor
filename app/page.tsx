@@ -1089,6 +1089,29 @@ export default function Home() {
         }
       }
 
+      if (!doneByChapter.size && chapterResults.length) {
+        for (const result of chapterResults) {
+          if (result.status !== "done" || !result.finalSummary) continue;
+          const liveChapter = selectedChapters.find(
+            (chapter) => chapter.chapterIndex === result.chapterIndex,
+          );
+          if (!liveChapter || liveChapter.chapterTitle !== result.chapterTitle) continue;
+
+          doneByChapter.set(result.chapterIndex, {
+            chapterIndex: result.chapterIndex,
+            chapterTitle: result.chapterTitle,
+            summary: result.finalSummary,
+            truncated: result.truncated,
+            originalChars: result.originalChars,
+            processedChars: result.processedChars,
+          });
+        }
+
+        if (doneByChapter.size) {
+          writeChapterCache(runCacheKey, doneByChapter);
+        }
+      }
+
       setChapterResults(
         selectedChapters.map((chapter) => {
           const cached = doneByChapter.get(chapter.chapterIndex);
