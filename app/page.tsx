@@ -1714,119 +1714,126 @@ export default function Home() {
                   Clear Output
                 </button>
               </div>
-
-              <hr className="library-divider" />
-              <h3 className="card__title">Local library</h3>
-              <p className="card__subtitle">Saved runs stay on this machine.</p>
-
-              <div className="button-row" style={{ marginBottom: 10 }}>
-                <button
-                  className="button button--ghost"
-                  type="button"
-                  onClick={() => {
-                    void loadLibrary();
-                  }}
-                  disabled={isLibraryLoading}
-                >
-                  {isLibraryLoading ? "Refreshing..." : "Refresh"}
-                </button>
-                <button
-                  className="button button--ghost"
-                  type="button"
-                  onClick={handleExportLibrary}
-                  disabled={isLibraryLoading || !libraryBooks.length}
-                >
-                  Export All
-                </button>
-                <button
-                  className="button button--ghost"
-                  type="button"
-                  onClick={() => {
-                    importInputRef.current?.click();
-                  }}
-                  disabled={isImportingLibrary}
-                >
-                  {isImportingLibrary ? "Importing..." : "Import"}
-                </button>
-              </div>
-
-              <input
-                ref={importInputRef}
-                type="file"
-                accept="application/json,.json"
-                style={{ display: "none" }}
-                onChange={(event) => {
-                  void handleImportLibraryFile(event.target.files?.[0] || null);
-                }}
-              />
-
-              {libraryError ? <div className="alert alert--error">{libraryError}</div> : null}
-              {libraryNotice ? <div className="alert alert--info">{libraryNotice}</div> : null}
-
-              {isLibraryLoading ? (
-                <div className="alert alert--info">Loading local library...</div>
-              ) : !libraryBooks.length ? (
-                <div className="alert alert--info">No saved books yet.</div>
-              ) : (
-                <div className="library-list">
-                  {libraryBooks.slice(0, 8).map((book) => (
-                    <article className="library-item" key={book.id}>
-                      <div>
-                        <p className="library-item__title">
-                          <Link href={`/${book.id}`}>{book.bookTitle}</Link>
-                        </p>
-                        <p className="library-item__meta">
-                          {new Date(book.createdAt).toLocaleString()} · {book.chapterCount} chapters
-                          {book.hasSynthesis ? " · synthesis" : ""}
-                        </p>
-                        <p className="library-item__meta">
-                          <code>/{book.id}</code>
-                        </p>
-                      </div>
-
-                      <div className="library-item__actions">
-                        <a className="button button--ghost button-link" href={withBasePath(`/${book.id}`)}>
-                          Open
-                        </a>
-                        <button
-                          className="button button--ghost button-link"
-                          type="button"
-                          onClick={() => {
-                            handleExportBook(book.id);
-                          }}
-                        >
-                          Export
-                        </button>
-                        <button
-                          className="button button--ghost"
-                          type="button"
-                          onClick={() => {
-                            void handleDeleteBook(book.id);
-                          }}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              )}
-
-              <div className="button-row" style={{ marginTop: 10 }}>
-                <button
-                  className="button button--ghost"
-                  type="button"
-                  onClick={() => {
-                    void handleClearAllBooks();
-                  }}
-                  disabled={isLibraryLoading || !libraryBooks.length}
-                >
-                  Clear All Data
-                </button>
-              </div>
             </details>
           </section>
         </div>
+
+        <section className="card" style={{ marginTop: 16 }}>
+          <h2 className="card__title">Local library</h2>
+          <p className="card__subtitle">Saved runs stay on this machine.</p>
+
+          {savedBookId ? (
+            <div className="alert alert--info">
+              Saved successfully: <Link href={`/${savedBookId}`}>/{savedBookId}</Link>
+            </div>
+          ) : null}
+
+          <div className="button-row" style={{ marginBottom: 10 }}>
+            <button
+              className="button button--ghost"
+              type="button"
+              onClick={() => {
+                void loadLibrary();
+              }}
+              disabled={isLibraryLoading}
+            >
+              {isLibraryLoading ? "Refreshing..." : "Refresh"}
+            </button>
+            <button
+              className="button button--ghost"
+              type="button"
+              onClick={handleExportLibrary}
+              disabled={isLibraryLoading || !libraryBooks.length}
+            >
+              Export All
+            </button>
+            <button
+              className="button button--ghost"
+              type="button"
+              onClick={() => {
+                importInputRef.current?.click();
+              }}
+              disabled={isImportingLibrary}
+            >
+              {isImportingLibrary ? "Importing..." : "Import"}
+            </button>
+          </div>
+
+          <input
+            ref={importInputRef}
+            type="file"
+            accept="application/json,.json"
+            style={{ display: "none" }}
+            onChange={(event) => {
+              void handleImportLibraryFile(event.target.files?.[0] || null);
+            }}
+          />
+
+          {libraryError ? <div className="alert alert--error">{libraryError}</div> : null}
+          {libraryNotice ? <div className="alert alert--info">{libraryNotice}</div> : null}
+
+          {isLibraryLoading ? (
+            <div className="alert alert--info">Loading local library...</div>
+          ) : !libraryBooks.length ? (
+            <div className="alert alert--info">No saved books yet.</div>
+          ) : (
+            <div className="library-list">
+              {libraryBooks.map((book) => (
+                <article className="library-item" key={book.id}>
+                  <div>
+                    <p className="library-item__title">
+                      <Link href={`/${book.id}`}>{book.bookTitle}</Link>
+                    </p>
+                    <p className="library-item__meta">
+                      {new Date(book.createdAt).toLocaleString()} · {book.chapterCount} chapters
+                      {book.hasSynthesis ? " · synthesis" : ""}
+                    </p>
+                    <p className="library-item__meta">
+                      <code>/{book.id}</code>
+                    </p>
+                  </div>
+
+                  <div className="library-item__actions">
+                    <a className="button button--ghost button-link" href={withBasePath(`/${book.id}`)}>
+                      Open
+                    </a>
+                    <button
+                      className="button button--ghost button-link"
+                      type="button"
+                      onClick={() => {
+                        handleExportBook(book.id);
+                      }}
+                    >
+                      Export
+                    </button>
+                    <button
+                      className="button button--ghost"
+                      type="button"
+                      onClick={() => {
+                        void handleDeleteBook(book.id);
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+
+          <div className="button-row" style={{ marginTop: 10 }}>
+            <button
+              className="button button--ghost"
+              type="button"
+              onClick={() => {
+                void handleClearAllBooks();
+              }}
+              disabled={isLibraryLoading || !libraryBooks.length}
+            >
+              Clear All Data
+            </button>
+          </div>
+        </section>
       </div>
     </div>
   );
