@@ -1,5 +1,7 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { promises as fs } from "node:fs";
+import path from "node:path";
 import { promisify } from "node:util";
 import { callOpenRouter } from "@/lib/openrouter";
 
@@ -64,6 +66,7 @@ type OpenClawAgentRunPayload = {
 
 const DEFAULT_PROVIDER = "openclaw";
 const DEFAULT_TIMEOUT_MS = 300_000;
+const PROMPT_RUNTIME_DIR = path.join(process.cwd(), ".runtime", "prompts");
 
 function resolveProvider(): "openclaw" | "openrouter" {
   const raw = (process.env.BOOK_COMPRESSOR_INFERENCE_PROVIDER || DEFAULT_PROVIDER)
@@ -185,6 +188,8 @@ async function callViaOpenClawAgentLocal({
   messages,
 }: InferenceCallOptions): Promise<InferenceResult> {
   const prompt = buildPrompt(messages);
+  const promptId = randomUUID();
+  const promptPath = path.join(PROMPT_RUNTIME_DIR, `prompt-${promptId}.txt`);
   const requestedModel = normalizeModel(model);
 
   const configuredTimeout = Number(process.env.BOOK_COMPRESSOR_AI_TIMEOUT_MS || DEFAULT_TIMEOUT_MS);
@@ -192,6 +197,17 @@ async function callViaOpenClawAgentLocal({
     ? configuredTimeout
     : DEFAULT_TIMEOUT_MS;
   const timeoutSeconds = Math.max(30, Math.ceil(timeoutMs / 1000));
+
+  await fs.mkdir(PROMPT_RUNTIME_DIR, { recursive: true });
+  await fs.writeFile(promptPath, prompt, "utf8");
+
+  const agentMessage = [
+    "Use the read tool to read this file first:",
+    promptPath,
+    "",
+    "Then execute the task exactly as written in that file.",
+    "Return only the requested output text, with no preface or commentary.",
+  ].join("\n");
 
   const args = [
     "agent",
@@ -202,9 +218,9 @@ async function callViaOpenClawAgentLocal({
     "--verbose",
     "off",
     "--session-id",
-    `bookcompressor-${randomUUID()}`,
+    `bookcompressor-${promptId}`,
     "--message",
-    prompt,
+    agentMessage,
     "--timeout",
     String(timeoutSeconds),
   ];
@@ -242,6 +258,10 @@ async function callViaOpenClawAgentLocal({
   } catch (error) {
     const detail = error instanceof Error ? error.message : "Unknown inference error.";
     throw new Error(`OpenClaw local-agent inference failed: ${detail}`);
+  } finally {
+    await fs.rm(promptPath, { force: true }).catch(() => {
+      // non-fatal cleanup failure
+    });
   }
 }
 
