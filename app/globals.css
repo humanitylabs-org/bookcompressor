@@ -750,10 +750,10 @@ a {
 }
 
 .bcv-main {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--surface);
-  padding: 24px 30px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 8px 10px 16px;
   min-height: calc(100vh - 210px);
 }
 
@@ -903,7 +903,7 @@ a {
   bottom: -2px;
   padding-top: 14px;
   padding-bottom: 6px;
-  background: linear-gradient(to top, var(--surface) 72%, rgba(22, 22, 26, 0.88));
+  background: linear-gradient(to top, var(--bg) 72%, rgba(11, 11, 13, 0.88));
 }
 
 .bcv-pager-btn {
@@ -1002,7 +1002,7 @@ a {
 
   .bcv-main {
     min-height: auto;
-    padding: 16px 14px 20px;
+    padding: 6px 2px 20px;
   }
 
   .bcv-main__meta h2 {
