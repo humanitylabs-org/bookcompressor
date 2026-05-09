@@ -53,11 +53,6 @@ type ChapterCacheStore = Record<string, {
   chapters: ChapterSummaryEntry[];
 }>;
 
-type PreRunEstimate = {
-  chapterCount: number;
-  callCount: number;
-};
-
 type LibraryBookItem = {
   id: string;
   bookTitle: string;
@@ -177,13 +172,6 @@ function clearChapterCache(cacheKey: string) {
   } catch {
     // ignore local storage write failures
   }
-}
-
-function statusClass(status: ChapterStatus): string {
-  if (status === "running") return "badge badge--running";
-  if (status === "done") return "badge badge--done";
-  if (status === "failed") return "badge badge--failed";
-  return "badge badge--queued";
 }
 
 async function postJsonWithTimeout<TPayload, TResult>(
@@ -609,7 +597,6 @@ export default function Home() {
   const [maxChapters, setMaxChapters] = useState("0");
   const [chapterConcurrency, setChapterConcurrency] = useState("1");
 
-  const [rightsConfirmed] = useState(true);
   const [epubFile, setEpubFile] = useState<File | null>(null);
   const [parsedBookCache, setParsedBookCache] = useState<ParsedBook | null>(null);
   const [parsedFileKey, setParsedFileKey] = useState("");
@@ -626,7 +613,6 @@ export default function Home() {
   const [isSavingBook, setIsSavingBook] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [statusLine, setStatusLine] = useState("Idle");
-  const [resumeNotice, setResumeNotice] = useState<string | null>(null);
   const [savedBookId, setSavedBookId] = useState<string | null>(null);
 
   const [libraryBooks, setLibraryBooks] = useState<LibraryBookItem[]>([]);
@@ -634,6 +620,7 @@ export default function Home() {
   const [libraryError, setLibraryError] = useState<string | null>(null);
   const [libraryNotice, setLibraryNotice] = useState<string | null>(null);
   const [isImportingLibrary, setIsImportingLibrary] = useState(false);
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
 
   const completedCount = chapterResults.filter(
@@ -648,23 +635,6 @@ export default function Home() {
   const successfulChapters = chapterResults.filter(
     (result) => result.status === "done" && result.finalSummary,
   );
-
-  const estimate = useMemo<PreRunEstimate | null>(() => {
-    if (!parsedBookCache) return null;
-
-    const chapterLimit = Number(maxChapters);
-    const selected =
-      Number.isFinite(chapterLimit) && chapterLimit > 0
-        ? parsedBookCache.chapters.slice(0, chapterLimit)
-        : parsedBookCache.chapters;
-
-    if (!selected.length) return null;
-
-    return {
-      chapterCount: selected.length,
-      callCount: selected.length + 1,
-    };
-  }, [parsedBookCache, maxChapters]);
 
   const loadLibrary = async () => {
     setIsLibraryLoading(true);
@@ -923,9 +893,6 @@ export default function Home() {
       if (parsed.bookTitle) setBookTitle(parsed.bookTitle);
       if (Array.isArray(parsed.chapterResults) && parsed.chapterResults.length) {
         setChapterResults(parsed.chapterResults);
-        setResumeNotice(
-          "Restored last run output from browser checkpoint. If a run was in progress, it was stopped by refresh.",
-        );
       }
       if (typeof parsed.bookSynthesis === "string") setBookSynthesis(parsed.bookSynthesis);
       if (typeof parsed.statusLine === "string") setStatusLine(parsed.statusLine);
@@ -963,7 +930,6 @@ export default function Home() {
     setBookTitle("");
     setChapterResults([]);
     setBookSynthesis("");
-    setResumeNotice(null);
     setSavedBookId(null);
     setStatusLine("Idle");
     try {
@@ -1032,16 +998,10 @@ export default function Home() {
 
     setError(null);
     setBookSynthesis("");
-    setResumeNotice(null);
     setSavedBookId(null);
 
     if (!epubFile) {
       setError("Please upload an EPUB file.");
-      return;
-    }
-
-    if (!rightsConfirmed) {
-      setError("You must confirm you have rights to process this content.");
       return;
     }
 
@@ -1541,36 +1501,47 @@ export default function Home() {
           <p className="hero__sub">Drop an EPUB, compress it, and open the saved permalink.</p>
         </section>
 
-        <div className="grid">
+        <div className="upload-stack">
           <section className="card">
             <h2 className="card__title">EPUB Uploader</h2>
-            <p className="card__subtitle">Simple fallback mode.</p>
+            <p className="card__subtitle">Upload and compress.</p>
 
             <form onSubmit={handleCompress}>
               <label className="field">
                 <span className="field__label">EPUB file</span>
                 <div
-                  className={`dropzone ${isDropActive ? "dropzone--active" : ""}`}
+                  className={`dropzone dropzone--large ${isDropActive ? "dropzone--active" : ""}`}
                   onDragOver={handleDropZoneDragOver}
                   onDragLeave={handleDropZoneDragLeave}
                   onDrop={handleDropZoneDrop}
+                  onClick={() => uploadInputRef.current?.click()}
                 >
-                  Drop EPUB here.
+                  Drop EPUB here
                 </div>
                 <input
-                  className="file"
+                  ref={uploadInputRef}
                   type="file"
                   accept=".epub,application/epub+zip"
+                  style={{ display: "none" }}
                   onChange={(event) => {
                     void handleFileSelection(event.target.files?.[0] || null);
                   }}
                 />
-                <p className="hint">
-                  {isInspectingFile
-                    ? "Inspecting EPUB..."
-                    : epubFile
-                      ? `Selected: ${epubFile.name}`
-                      : ""}
+                <p className="hint hint--upload">
+                  <button
+                    className="upload-link"
+                    type="button"
+                    onClick={() => uploadInputRef.current?.click()}
+                  >
+                    Choose file
+                  </button>
+                  <span className="upload-caption">
+                    {isInspectingFile
+                      ? "Inspecting..."
+                      : epubFile
+                        ? epubFile.name
+                        : "No file chosen"}
+                  </span>
                 </p>
               </label>
 
@@ -1586,33 +1557,6 @@ export default function Home() {
             <div className="progress" aria-label="progress">
               <div className="progress__fill" style={{ width: `${progressPercent}%` }} />
             </div>
-
-            {chapterResults.length ? (
-              <details className="prompt-editor" style={{ marginTop: 12 }}>
-                <summary className="prompt-editor__summary">Progress details</summary>
-                <div className="chapter-list" style={{ marginBottom: 12 }}>
-                  {chapterResults
-                    .slice()
-                    .sort((a, b) => a.chapterIndex - b.chapterIndex)
-                    .map((result) => (
-                      <article className="chapter-card" key={`${result.chapterIndex}-${result.chapterTitle}`}>
-                        <div className="chapter-card__top">
-                          <h3 className="chapter-card__title">
-                            Chapter {result.chapterIndex}: {result.chapterTitle}
-                          </h3>
-                          <span className={statusClass(result.status)}>{result.status}</span>
-                        </div>
-                        {typeof result.processedChars === "number" ? (
-                          <p className="chapter-card__meta">
-                            {result.truncated ? "truncated" : "full"} · {result.processedChars.toLocaleString()} chars
-                          </p>
-                        ) : null}
-                        {result.error ? <p className="chapter-card__meta" style={{ color: "#ffc9c9" }}>{result.error}</p> : null}
-                      </article>
-                    ))}
-                </div>
-              </details>
-            ) : null}
 
             {chapterResults.length ? (
               <p className="footer-note">
@@ -1710,15 +1654,14 @@ export default function Home() {
             </div>
             </form>
           </section>
-        </div>
 
-        <section className="card" style={{ marginTop: 16 }}>
-          <h2 className="card__title">Local library</h2>
-          <p className="card__subtitle">Saved runs stay on this machine.</p>
+        <section className="card">
+          <h2 className="card__title">Library</h2>
+          <p className="card__subtitle">Saved runs.</p>
 
           {savedBookId ? (
             <div className="alert alert--info">
-              Saved successfully: <Link href={`/${savedBookId}`}>/{savedBookId}</Link>
+              Saved: <Link href={`/${savedBookId}`}>/{savedBookId}</Link>
             </div>
           ) : null}
 
@@ -1828,6 +1771,7 @@ export default function Home() {
             </button>
           </div>
         </section>
+      </div>
       </div>
     </div>
   );
