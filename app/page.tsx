@@ -518,7 +518,7 @@ export default function Home() {
   const [synthesisModel, setSynthesisModel] = useState(DEFAULT_BASELINE_MODEL);
   const [detailLevel, setDetailLevel] = useState<DetailLevel>("balanced");
   const [maxChapters, setMaxChapters] = useState("0");
-  const [chapterConcurrency, setChapterConcurrency] = useState("2");
+  const [chapterConcurrency, setChapterConcurrency] = useState("1");
 
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
   const [epubFile, setEpubFile] = useState<File | null>(null);
@@ -1082,6 +1082,10 @@ export default function Home() {
 
       let queueIndex = 0;
       let completedChapters = 0;
+      let successCount = 0;
+      let failureCount = 0;
+      let fatalStopReason: string | null = null;
+      let fatalStopRequested = false;
 
       setStatusLine(
         `Compressing chapters with ${workerCount} worker${workerCount === 1 ? "" : "s"}...`,
@@ -1089,6 +1093,7 @@ export default function Home() {
 
       const runNextChapter = async () => {
         while (true) {
+          if (fatalStopRequested) return;
           if (runController.signal.aborted) return;
 
           const chapter = selectedChapters[queueIndex];
@@ -1109,6 +1114,11 @@ export default function Home() {
             });
 
             storeChapterSummary(chapter, payload);
+            if (payload.finalSummary) {
+              successCount += 1;
+            } else {
+              failureCount += 1;
+            }
           } catch (chapterError) {
             const message =
               chapterError instanceof Error ? chapterError.message : "Unknown chapter failure.";
@@ -1118,11 +1128,26 @@ export default function Home() {
               error: message,
             });
 
+            failureCount += 1;
+
+            if (!successCount && failureCount >= 3) {
+              fatalStopReason =
+                "Model/gateway appears unavailable (first 3 chapters all failed). Stopped early so you can fix settings and retry.";
+              fatalStopRequested = true;
+              setError(fatalStopReason);
+              setStatusLine("Stopped early: model/gateway unavailable.");
+              return;
+            }
+
             if (message === "Run stopped by user.") {
               return;
             }
           } finally {
             completedChapters += 1;
+            if (fatalStopRequested) {
+              setStatusLine("Stopped early: model/gateway unavailable.");
+              continue;
+            }
             setStatusLine(
               `Compressing chapters... ${completedChapters}/${selectedChapters.length} finished.`,
             );
@@ -1131,6 +1156,10 @@ export default function Home() {
       };
 
       await Promise.all(Array.from({ length: workerCount }, () => runNextChapter()));
+
+      if (fatalStopReason) {
+        return;
+      }
 
       if (runController.signal.aborted) {
         setStatusLine("Stopped by user.");
@@ -1389,7 +1418,7 @@ export default function Home() {
                     onChange={(event) => setChapterConcurrency(event.target.value)}
                   />
                   <p className="hint">
-                    Default is 2. Higher values are faster but can increase model load.
+                    Default is 1 for reliability. Increase only if your gateway/model can handle it.
                   </p>
                 </label>
               </details>
@@ -1620,6 +1649,30 @@ export default function Home() {
             <div className="progress" aria-label="progress">
               <div className="progress__fill" style={{ width: `${progressPercent}%` }} />
             </div>
+
+            {chapterResults.length ? (
+              <div className="chapter-list" style={{ marginBottom: 12 }}>
+                {chapterResults
+                  .slice()
+                  .sort((a, b) => a.chapterIndex - b.chapterIndex)
+                  .map((result) => (
+                    <article className="chapter-card" key={`${result.chapterIndex}-${result.chapterTitle}`}>
+                      <div className="chapter-card__top">
+                        <h3 className="chapter-card__title">
+                          Chapter {result.chapterIndex}: {result.chapterTitle}
+                        </h3>
+                        <span className={statusClass(result.status)}>{result.status}</span>
+                      </div>
+                      {typeof result.processedChars === "number" ? (
+                        <p className="chapter-card__meta">
+                          {result.truncated ? "truncated" : "full"} · {result.processedChars.toLocaleString()} chars
+                        </p>
+                      ) : null}
+                      {result.error ? <p className="chapter-card__meta" style={{ color: "#ffc9c9" }}>{result.error}</p> : null}
+                    </article>
+                  ))}
+              </div>
+            ) : null}
 
             {chapterResults.length ? (
               <p className="footer-note">
