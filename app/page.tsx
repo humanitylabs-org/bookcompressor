@@ -1538,27 +1538,24 @@ export default function Home() {
       <div className="shell">
         <section className="hero">
           <h1 className="hero__title">Book Compressor</h1>
-          <p className="hero__sub">
-            Send EPUB files through chat as your main flow. This page is just a simple fallback
-            uploader plus local permalinks you can share via export/import.
-          </p>
+          <p className="hero__sub">Drop an EPUB, compress it, and open the saved permalink.</p>
         </section>
 
         <div className="grid">
           <section className="card">
-            <h2 className="card__title">Simple fallback flow</h2>
-            <p className="card__subtitle">1) Drop EPUB 2) Start compression 3) Open saved permalink.</p>
+            <h2 className="card__title">EPUB Uploader</h2>
+            <p className="card__subtitle">Simple fallback mode.</p>
 
             <form onSubmit={handleCompress}>
               <label className="field">
-                <span className="field__label">Step 1 — EPUB file</span>
+                <span className="field__label">EPUB file</span>
                 <div
                   className={`dropzone ${isDropActive ? "dropzone--active" : ""}`}
                   onDragOver={handleDropZoneDragOver}
                   onDragLeave={handleDropZoneDragLeave}
                   onDrop={handleDropZoneDrop}
                 >
-                  Drag and drop an EPUB here.
+                  Drop EPUB here.
                 </div>
                 <input
                   className="file"
@@ -1573,33 +1570,16 @@ export default function Home() {
                     ? "Inspecting EPUB..."
                     : epubFile
                       ? `Selected: ${epubFile.name}`
-                      : "No file selected yet."}
+                      : ""}
                 </p>
               </label>
 
-              <div className="button-row">
-                <button className="button" disabled={isRunning || isInspectingFile} type="submit">
-                  {isRunning ? "Compressing..." : "Step 2 — Start Compression"}
-                </button>
-
-                <button
-                  className="button button--ghost"
-                  disabled={!isRunning}
-                  type="button"
-                  onClick={handleStopRun}
-                >
-                  Stop
-                </button>
-              </div>
-            </form>
-
             {savedBookId ? (
               <div className="alert alert--info" style={{ marginTop: 12 }}>
-                Step 3 — Saved: <Link href={`/${savedBookId}`}>/{savedBookId}</Link>
+                Saved: <Link href={`/${savedBookId}`}>/{savedBookId}</Link>
               </div>
             ) : null}
 
-            {resumeNotice ? <div className="alert alert--info">{resumeNotice}</div> : null}
             {error ? <div className="alert alert--error">{error}</div> : null}
 
             <p className="status">Status: {statusLine}</p>
@@ -1609,7 +1589,7 @@ export default function Home() {
 
             {chapterResults.length ? (
               <details className="prompt-editor" style={{ marginTop: 12 }}>
-                <summary className="prompt-editor__summary">Chapter status</summary>
+                <summary className="prompt-editor__summary">Progress details</summary>
                 <div className="chapter-list" style={{ marginBottom: 12 }}>
                   {chapterResults
                     .slice()
@@ -1642,32 +1622,10 @@ export default function Home() {
             ) : null}
 
             <details className="prompt-editor" style={{ marginTop: 14 }}>
-              <summary className="prompt-editor__summary">Advanced (optional)</summary>
+              <summary className="prompt-editor__summary">Settings (optional)</summary>
 
               <label className="field">
-                <span className="field__label">Chapter Model</span>
-                <input
-                  className="input"
-                  type="text"
-                  value={chapterModel}
-                  onChange={(event) => setChapterModel(event.target.value)}
-                  placeholder="(optional) host default if blank"
-                />
-              </label>
-
-              <label className="field">
-                <span className="field__label">Book Synthesis Model</span>
-                <input
-                  className="input"
-                  type="text"
-                  value={synthesisModel}
-                  onChange={(event) => setSynthesisModel(event.target.value)}
-                  placeholder="(optional) host default if blank"
-                />
-              </label>
-
-              <label className="field">
-                <span className="field__label">Detail Level</span>
+                <span className="field__label">Detail level</span>
                 <select
                   className="select"
                   value={detailLevel}
@@ -1680,19 +1638,7 @@ export default function Home() {
               </label>
 
               <label className="field">
-                <span className="field__label">Max Chapters (0 = all)</span>
-                <input
-                  className="input"
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={maxChapters}
-                  onChange={(event) => setMaxChapters(event.target.value)}
-                />
-              </label>
-
-              <label className="field">
-                <span className="field__label">Parallel Chapter Workers (1-12)</span>
+                <span className="field__label">Workers (1-12)</span>
                 <input
                   className="input"
                   type="number"
@@ -1704,17 +1650,65 @@ export default function Home() {
                 />
               </label>
 
-              <div className="button-row" style={{ marginTop: 8 }}>
-                <button
-                  className="button button--ghost"
-                  disabled={isRunning || (!chapterResults.length && !bookSynthesis)}
-                  type="button"
-                  onClick={clearOutput}
-                >
-                  Clear Output
-                </button>
-              </div>
+              <label className="field">
+                <span className="field__label">Max chapters (0 = all)</span>
+                <input
+                  className="input"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={maxChapters}
+                  onChange={(event) => setMaxChapters(event.target.value)}
+                />
+              </label>
+
+              <label className="field">
+                <span className="field__label">Chapter model (optional)</span>
+                <input
+                  className="input"
+                  type="text"
+                  value={chapterModel}
+                  onChange={(event) => setChapterModel(event.target.value)}
+                  placeholder="(optional) host default if blank"
+                />
+              </label>
+
+              <label className="field">
+                <span className="field__label">Synthesis model (optional)</span>
+                <input
+                  className="input"
+                  type="text"
+                  value={synthesisModel}
+                  onChange={(event) => setSynthesisModel(event.target.value)}
+                  placeholder="(optional) host default if blank"
+                />
+              </label>
             </details>
+
+            <div className="button-row" style={{ marginTop: 12 }}>
+              <button className="button" disabled={isRunning || isInspectingFile} type="submit">
+                {isRunning ? "Compressing..." : "Compress EPUB"}
+              </button>
+
+              <button
+                className="button button--ghost"
+                disabled={!isRunning}
+                type="button"
+                onClick={handleStopRun}
+              >
+                Stop
+              </button>
+
+              <button
+                className="button button--ghost"
+                disabled={isRunning || (!chapterResults.length && !bookSynthesis)}
+                type="button"
+                onClick={clearOutput}
+              >
+                Clear
+              </button>
+            </div>
+            </form>
           </section>
         </div>
 
