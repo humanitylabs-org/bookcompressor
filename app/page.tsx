@@ -10,7 +10,6 @@ import { withBasePath } from "@/lib/base-path";
 const DEFAULT_BASELINE_MODEL = "";
 
 const SETTINGS_STORAGE_KEY = "book-compressor.settings.v3";
-const RUN_STORAGE_KEY = "book-compressor.run.v3";
 const CHAPTER_CACHE_STORAGE_KEY = "book-compressor.chapter-cache.v1";
 
 type ParsedChapter = {
@@ -595,7 +594,7 @@ export default function Home() {
   const [synthesisModel, setSynthesisModel] = useState(DEFAULT_BASELINE_MODEL);
   const [detailLevel, setDetailLevel] = useState<DetailLevel>("balanced");
   const [maxChapters, setMaxChapters] = useState("0");
-  const [chapterConcurrency, setChapterConcurrency] = useState("1");
+  const [chapterConcurrency, setChapterConcurrency] = useState("10");
 
   const [epubFile, setEpubFile] = useState<File | null>(null);
   const [parsedBookCache, setParsedBookCache] = useState<ParsedBook | null>(null);
@@ -635,6 +634,8 @@ export default function Home() {
   const successfulChapters = chapterResults.filter(
     (result) => result.status === "done" && result.finalSummary,
   );
+
+  const showRunState = isRunning || chapterResults.length > 0 || Boolean(savedBookId);
 
   const loadLibrary = async () => {
     setIsLibraryLoading(true);
@@ -854,7 +855,9 @@ export default function Home() {
       if (parsed.detailLevel) setDetailLevel(parsed.detailLevel);
       if (typeof parsed.maxChapters === "string") setMaxChapters(parsed.maxChapters);
       if (typeof parsed.chapterConcurrency === "string") {
-        setChapterConcurrency(parsed.chapterConcurrency);
+        if (parsed.chapterConcurrency === "1" || parsed.chapterConcurrency === "5" || parsed.chapterConcurrency === "10") {
+          setChapterConcurrency(parsed.chapterConcurrency);
+        }
       }
     } catch {
       // ignore local storage parse failures
@@ -878,46 +881,6 @@ export default function Home() {
     }
   }, [chapterModel, synthesisModel, detailLevel, maxChapters, chapterConcurrency]);
 
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(RUN_STORAGE_KEY);
-      if (!raw) return;
-
-      const parsed = JSON.parse(raw) as {
-        bookTitle?: string;
-        chapterResults?: ChapterResult[];
-        bookSynthesis?: string;
-        statusLine?: string;
-      };
-
-      if (parsed.bookTitle) setBookTitle(parsed.bookTitle);
-      if (Array.isArray(parsed.chapterResults) && parsed.chapterResults.length) {
-        setChapterResults(parsed.chapterResults);
-      }
-      if (typeof parsed.bookSynthesis === "string") setBookSynthesis(parsed.bookSynthesis);
-      if (typeof parsed.statusLine === "string") setStatusLine(parsed.statusLine);
-    } catch {
-      // ignore local storage parse failures
-    }
-  }, []);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(
-        RUN_STORAGE_KEY,
-        JSON.stringify({
-          bookTitle,
-          chapterResults,
-          bookSynthesis,
-          statusLine,
-          updatedAt: Date.now(),
-        }),
-      );
-    } catch {
-      // ignore write failures
-    }
-  }, [bookTitle, chapterResults, bookSynthesis, statusLine]);
-
   const updateChapter = (chapterIndex: number, updates: Partial<ChapterResult>) => {
     setChapterResults((previous) =>
       previous.map((entry) =>
@@ -932,11 +895,6 @@ export default function Home() {
     setBookSynthesis("");
     setSavedBookId(null);
     setStatusLine("Idle");
-    try {
-      localStorage.removeItem(RUN_STORAGE_KEY);
-    } catch {
-      // ignore
-    }
   };
 
   const handleStopRun = () => {
@@ -1167,7 +1125,7 @@ export default function Home() {
 
       const rawConcurrency = Number(chapterConcurrency);
       const configuredWorkers = Number.isFinite(rawConcurrency)
-        ? Math.max(1, Math.min(12, Math.floor(rawConcurrency)))
+        ? Math.max(1, Math.min(10, Math.floor(rawConcurrency)))
         : 1;
       const workerCount = Math.max(1, Math.min(configuredWorkers, pendingChapters.length || 1));
 
@@ -1553,16 +1511,20 @@ export default function Home() {
 
             {error ? <div className="alert alert--error">{error}</div> : null}
 
-            <p className="status">Status: {statusLine}</p>
-            <div className="progress" aria-label="progress">
-              <div className="progress__fill" style={{ width: `${progressPercent}%` }} />
-            </div>
+            {showRunState ? (
+              <>
+                <p className="status">Status: {statusLine}</p>
+                <div className="progress" aria-label="progress">
+                  <div className="progress__fill" style={{ width: `${progressPercent}%` }} />
+                </div>
 
-            {chapterResults.length ? (
-              <p className="footer-note">
-                {successfulChapters.length}/{chapterResults.length} chapters done
-                {bookSynthesis ? " + synthesis complete" : ""}.
-              </p>
+                {chapterResults.length ? (
+                  <p className="footer-note">
+                    {successfulChapters.length}/{chapterResults.length} chapters done
+                    {bookSynthesis ? " + synthesis complete" : ""}.
+                  </p>
+                ) : null}
+              </>
             ) : null}
 
             <details className="prompt-editor" style={{ marginTop: 14 }}>
@@ -1582,16 +1544,16 @@ export default function Home() {
               </label>
 
               <label className="field">
-                <span className="field__label">Workers (1-12)</span>
-                <input
-                  className="input"
-                  type="number"
-                  min={1}
-                  max={12}
-                  step={1}
+                <span className="field__label">Workers</span>
+                <select
+                  className="select"
                   value={chapterConcurrency}
                   onChange={(event) => setChapterConcurrency(event.target.value)}
-                />
+                >
+                  <option value="10">10 (fast)</option>
+                  <option value="5">5</option>
+                  <option value="1">1 (stable)</option>
+                </select>
               </label>
 
               <label className="field">
