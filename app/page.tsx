@@ -11,6 +11,7 @@ const DEFAULT_BASELINE_MODEL = "";
 
 const SETTINGS_STORAGE_KEY = "book-compressor.settings.v3";
 const RUN_STORAGE_KEY = "book-compressor.run.v3";
+const CHAPTER_CACHE_STORAGE_KEY = "book-compressor.chapter-cache.v1";
 
 type ParsedChapter = {
   chapterIndex: number;
@@ -37,6 +38,20 @@ type ChapterResult = {
   processedChars?: number;
   error?: string;
 };
+
+type ChapterSummaryEntry = {
+  chapterIndex: number;
+  chapterTitle: string;
+  summary: string;
+  truncated?: boolean;
+  originalChars?: number;
+  processedChars?: number;
+};
+
+type ChapterCacheStore = Record<string, {
+  updatedAt: number;
+  chapters: ChapterSummaryEntry[];
+}>;
 
 type PreRunEstimate = {
   chapterCount: number;
@@ -88,6 +103,80 @@ function getChapterHeading(doc: Document): string {
 
 function fileFingerprint(file: File): string {
   return `${file.name}:${file.size}:${file.lastModified}`;
+}
+
+function buildRunCacheKey(input: {
+  fileKey: string;
+  detailLevel: DetailLevel;
+  chapterModel: string;
+  selectedChapters: ParsedChapter[];
+}): string {
+  const chapterSignature = input.selectedChapters
+    .map((chapter) => `${chapter.chapterIndex}:${chapter.chapterTitle}:${chapter.charCount}`)
+    .join("|");
+
+  return [
+    input.fileKey,
+    input.detailLevel,
+    input.chapterModel || "__default_model__",
+    chapterSignature,
+  ].join("::");
+}
+
+function readChapterCache(cacheKey: string): Map<number, ChapterSummaryEntry> {
+  if (typeof window === "undefined") return new Map();
+
+  try {
+    const raw = localStorage.getItem(CHAPTER_CACHE_STORAGE_KEY);
+    if (!raw) return new Map();
+
+    const parsed = JSON.parse(raw) as ChapterCacheStore;
+    const entry = parsed?.[cacheKey];
+    if (!entry || !Array.isArray(entry.chapters)) return new Map();
+
+    const output = new Map<number, ChapterSummaryEntry>();
+    for (const chapter of entry.chapters) {
+      if (!chapter || typeof chapter.chapterIndex !== "number") continue;
+      if (typeof chapter.summary !== "string" || !chapter.summary.trim()) continue;
+      output.set(chapter.chapterIndex, chapter);
+    }
+
+    return output;
+  } catch {
+    return new Map();
+  }
+}
+
+function writeChapterCache(cacheKey: string, data: Map<number, ChapterSummaryEntry>) {
+  if (typeof window === "undefined") return;
+
+  try {
+    const raw = localStorage.getItem(CHAPTER_CACHE_STORAGE_KEY);
+    const parsed = raw ? (JSON.parse(raw) as ChapterCacheStore) : {};
+
+    parsed[cacheKey] = {
+      updatedAt: Date.now(),
+      chapters: Array.from(data.values()).sort((a, b) => a.chapterIndex - b.chapterIndex),
+    };
+
+    localStorage.setItem(CHAPTER_CACHE_STORAGE_KEY, JSON.stringify(parsed));
+  } catch {
+    // ignore local storage write failures
+  }
+}
+
+function clearChapterCache(cacheKey: string) {
+  if (typeof window === "undefined") return;
+
+  try {
+    const raw = localStorage.getItem(CHAPTER_CACHE_STORAGE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw) as ChapterCacheStore;
+    delete parsed[cacheKey];
+    localStorage.setItem(CHAPTER_CACHE_STORAGE_KEY, JSON.stringify(parsed));
+  } catch {
+    // ignore local storage write failures
+  }
 }
 
 function statusClass(status: ChapterStatus): string {
@@ -985,30 +1074,54 @@ export default function Home() {
         throw new Error("No chapters selected for processing.");
       }
 
+      const runCacheKey = buildRunCacheKey({
+        fileKey: currentKey,
+        detailLevel,
+        chapterModel: chapterModel.trim(),
+        selectedChapters,
+      });
+
+      const doneByChapter = readChapterCache(runCacheKey);
+      for (const [cachedIndex, cachedEntry] of Array.from(doneByChapter.entries())) {
+        const liveChapter = selectedChapters.find((chapter) => chapter.chapterIndex === cachedIndex);
+        if (!liveChapter || liveChapter.chapterTitle !== cachedEntry.chapterTitle) {
+          doneByChapter.delete(cachedIndex);
+        }
+      }
+
       setChapterResults(
-        selectedChapters.map((chapter) => ({
-          chapterIndex: chapter.chapterIndex,
-          chapterTitle: chapter.chapterTitle,
-          status: "queued",
-        })),
+        selectedChapters.map((chapter) => {
+          const cached = doneByChapter.get(chapter.chapterIndex);
+          if (cached && cached.chapterTitle === chapter.chapterTitle) {
+            return {
+              chapterIndex: chapter.chapterIndex,
+              chapterTitle: chapter.chapterTitle,
+              status: "done" as const,
+              finalSummary: cached.summary,
+              truncated: cached.truncated,
+              originalChars: cached.originalChars,
+              processedChars: cached.processedChars,
+            };
+          }
+
+          return {
+            chapterIndex: chapter.chapterIndex,
+            chapterTitle: chapter.chapterTitle,
+            status: "queued" as const,
+          };
+        }),
       );
 
-      const doneByChapter = new Map<
-        number,
-        {
-          chapterIndex: number;
-          chapterTitle: string;
-          summary: string;
-          truncated?: boolean;
-          originalChars?: number;
-          processedChars?: number;
-        }
-      >();
+      const pendingChapters = selectedChapters.filter(
+        (chapter) => !doneByChapter.has(chapter.chapterIndex),
+      );
 
       const CHAPTER_TIMEOUT_MS = 420_000;
       const RETRY_CHAPTER_TIMEOUT_MS = 720_000;
+      const FINAL_RESCUE_TIMEOUT_MS = 900_000;
       const SYNTHESIS_TIMEOUT_MS = 600_000;
-      const CHAPTER_RETRY_ATTEMPTS = 2;
+      const CHAPTER_RETRY_ATTEMPTS = 3;
+      const FINAL_RESCUE_ATTEMPTS = 2;
 
       const runChapterSummary = async (
         chapter: ParsedChapter,
@@ -1064,21 +1177,16 @@ export default function Home() {
           originalChars: payload.originalChars,
           processedChars: payload.processedChars,
         });
+        writeChapterCache(runCacheKey, doneByChapter);
       };
 
-      const doneNow: Array<{
-        chapterIndex: number;
-        chapterTitle: string;
-        summary: string;
-        truncated?: boolean;
-        originalChars?: number;
-        processedChars?: number;
-      }> = [];
+      const doneNow: ChapterSummaryEntry[] = [];
 
       const rawConcurrency = Number(chapterConcurrency);
-      const workerCount = Number.isFinite(rawConcurrency)
-        ? Math.max(1, Math.min(4, Math.floor(rawConcurrency)))
+      const configuredWorkers = Number.isFinite(rawConcurrency)
+        ? Math.max(1, Math.min(12, Math.floor(rawConcurrency)))
         : 1;
+      const workerCount = Math.max(1, Math.min(configuredWorkers, pendingChapters.length || 1));
 
       let queueIndex = 0;
       let completedChapters = 0;
@@ -1087,16 +1195,24 @@ export default function Home() {
       let fatalStopReason: string | null = null;
       let fatalStopRequested = false;
 
-      setStatusLine(
-        `Compressing chapters with ${workerCount} worker${workerCount === 1 ? "" : "s"}...`,
-      );
+      if (!pendingChapters.length) {
+        setStatusLine(`All ${selectedChapters.length} chapters already summarized. Moving to synthesis...`);
+      } else if (doneByChapter.size > 0) {
+        setStatusLine(
+          `Resuming from checkpoint: ${doneByChapter.size}/${selectedChapters.length} done. Running ${pendingChapters.length} remaining with ${workerCount} worker${workerCount === 1 ? "" : "s"}...`,
+        );
+      } else {
+        setStatusLine(
+          `Compressing chapters with ${workerCount} worker${workerCount === 1 ? "" : "s"}...`,
+        );
+      }
 
       const runNextChapter = async () => {
         while (true) {
           if (fatalStopRequested) return;
           if (runController.signal.aborted) return;
 
-          const chapter = selectedChapters[queueIndex];
+          const chapter = pendingChapters[queueIndex];
           queueIndex += 1;
           if (!chapter) return;
 
@@ -1149,13 +1265,15 @@ export default function Home() {
               continue;
             }
             setStatusLine(
-              `Compressing chapters... ${completedChapters}/${selectedChapters.length} finished.`,
+              `Compressing chapters... ${completedChapters}/${pendingChapters.length} current-pass finished (${doneByChapter.size}/${selectedChapters.length} total done).`,
             );
           }
         }
       };
 
-      await Promise.all(Array.from({ length: workerCount }, () => runNextChapter()));
+      if (pendingChapters.length) {
+        await Promise.all(Array.from({ length: workerCount }, () => runNextChapter()));
+      }
 
       if (fatalStopReason) {
         return;
@@ -1233,6 +1351,68 @@ export default function Home() {
       }
 
       if (failedChapters.length) {
+        setStatusLine(
+          `Running final rescue pass for ${failedChapters.length} remaining chapter${failedChapters.length === 1 ? "" : "s"}...`,
+        );
+
+        for (const chapter of failedChapters) {
+          if (runController.signal.aborted) {
+            setStatusLine("Stopped by user.");
+            return;
+          }
+
+          let chapterRecovered = false;
+          let lastError = "Chapter failed after final rescue pass.";
+
+          for (let attempt = 1; attempt <= FINAL_RESCUE_ATTEMPTS; attempt += 1) {
+            setStatusLine(
+              `Final rescue chapter ${chapter.chapterIndex}/${selectedChapters.length} (attempt ${attempt}/${FINAL_RESCUE_ATTEMPTS})...`,
+            );
+            updateChapter(chapter.chapterIndex, { status: "running", error: undefined });
+
+            try {
+              const payload = await runChapterSummary(chapter, FINAL_RESCUE_TIMEOUT_MS);
+              updateChapter(chapter.chapterIndex, {
+                status: "done",
+                finalSummary: payload.finalSummary,
+                truncated: payload.truncated,
+                originalChars: payload.originalChars,
+                processedChars: payload.processedChars,
+              });
+
+              storeChapterSummary(chapter, payload);
+              chapterRecovered = Boolean(payload.finalSummary);
+              if (!chapterRecovered) {
+                lastError = "Model returned empty chapter output.";
+              } else {
+                break;
+              }
+            } catch (retryError) {
+              const message =
+                retryError instanceof Error ? retryError.message : "Unknown chapter failure.";
+              lastError = message;
+
+              if (message === "Run stopped by user.") {
+                setStatusLine("Stopped by user.");
+                return;
+              }
+            }
+          }
+
+          if (!chapterRecovered) {
+            updateChapter(chapter.chapterIndex, {
+              status: "failed",
+              error: lastError,
+            });
+          }
+        }
+
+        failedChapters = selectedChapters.filter(
+          (chapter) => !doneByChapter.has(chapter.chapterIndex),
+        );
+      }
+
+      if (failedChapters.length) {
         const failedPreview = failedChapters
           .slice(0, 4)
           .map((chapter) => `Chapter ${chapter.chapterIndex}`)
@@ -1240,7 +1420,7 @@ export default function Home() {
         const remainder = failedChapters.length > 4 ? ` +${failedChapters.length - 4} more` : "";
 
         setError(
-          `Run incomplete: ${failedChapters.length}/${selectedChapters.length} chapters failed (${failedPreview}${remainder}). Nothing was saved. Try again with Parallel Chapter Workers = 1.`,
+          `Run incomplete: ${failedChapters.length}/${selectedChapters.length} chapters failed (${failedPreview}${remainder}). Completed chapters were checkpointed. Press Start Compression again to resume only failed chapters.`,
         );
         setStatusLine("Run incomplete (chapters failed). Not saved.");
         return;
@@ -1304,6 +1484,7 @@ export default function Home() {
             chapters: orderedDone,
             synthesis: finalSynthesis,
           });
+          clearChapterCache(runCacheKey);
           setStatusLine(`Done. Saved as /${bookId}.`);
         } catch (saveError) {
           const message = saveError instanceof Error ? saveError.message : "Unknown save failure.";
@@ -1407,18 +1588,18 @@ export default function Home() {
                 </label>
 
                 <label className="field">
-                  <span className="field__label">Parallel Chapter Workers (1-4)</span>
+                  <span className="field__label">Parallel Chapter Workers (1-12)</span>
                   <input
                     className="input"
                     type="number"
                     min={1}
-                    max={4}
+                    max={12}
                     step={1}
                     value={chapterConcurrency}
                     onChange={(event) => setChapterConcurrency(event.target.value)}
                   />
                   <p className="hint">
-                    Default is 1 for reliability. Increase only if your gateway/model can handle it.
+                    Default is 1 for reliability. You can raise this up to 12 if your model/gateway can handle higher parallel load.
                   </p>
                 </label>
               </details>
