@@ -609,7 +609,7 @@ export default function Home() {
   const [maxChapters, setMaxChapters] = useState("0");
   const [chapterConcurrency, setChapterConcurrency] = useState("1");
 
-  const [rightsConfirmed, setRightsConfirmed] = useState(false);
+  const [rightsConfirmed] = useState(true);
   const [epubFile, setEpubFile] = useState<File | null>(null);
   const [parsedBookCache, setParsedBookCache] = useState<ParsedBook | null>(null);
   const [parsedFileKey, setParsedFileKey] = useState("");
@@ -1546,96 +1546,19 @@ export default function Home() {
 
         <div className="grid">
           <section className="card">
-            <h2 className="card__title">Simple Setup + Upload Fallback</h2>
-            <p className="card__subtitle">
-              Use chat as the main flow: send EPUB to your AI gateway. This page keeps only quick
-              settings, local history, and a fallback uploader.
-            </p>
-
-            <div className="alert alert--info" style={{ marginBottom: 14 }}>
-              No API key field required in this form. The host's OpenClaw model access is used by default.
-            </div>
+            <h2 className="card__title">Simple fallback flow</h2>
+            <p className="card__subtitle">1) Drop EPUB 2) Start compression 3) Open saved permalink.</p>
 
             <form onSubmit={handleCompress}>
-              <details className="prompt-editor" style={{ marginBottom: 14 }}>
-                <summary className="prompt-editor__summary">Optional controls</summary>
-                <label className="field">
-                  <span className="field__label">Chapter Model</span>
-                  <input
-                    className="input"
-                    type="text"
-                    value={chapterModel}
-                    onChange={(event) => setChapterModel(event.target.value)}
-                    placeholder="(optional) host default if blank"
-                  />
-                </label>
-
-                <label className="field">
-                  <span className="field__label">Book Synthesis Model</span>
-                  <input
-                    className="input"
-                    type="text"
-                    value={synthesisModel}
-                    onChange={(event) => setSynthesisModel(event.target.value)}
-                    placeholder="(optional) host default if blank"
-                  />
-                  <p className="hint">
-                    Leave both blank to use whatever model OpenClaw has available by default.
-                  </p>
-                </label>
-
-                <label className="field">
-                  <span className="field__label">Detail Level</span>
-                  <select
-                    className="select"
-                    value={detailLevel}
-                    onChange={(event) => setDetailLevel(event.target.value as DetailLevel)}
-                  >
-                    <option value="tight">Tight</option>
-                    <option value="balanced">Balanced</option>
-                    <option value="deep">Deep</option>
-                  </select>
-                </label>
-
-                <label className="field">
-                  <span className="field__label">Max Chapters (0 = all)</span>
-                  <input
-                    className="input"
-                    type="number"
-                    min={0}
-                    step={1}
-                    value={maxChapters}
-                    onChange={(event) => setMaxChapters(event.target.value)}
-                  />
-                  <p className="hint">Default is 0 (process all detected chapters).</p>
-                </label>
-
-                <label className="field">
-                  <span className="field__label">Parallel Chapter Workers (1-12)</span>
-                  <input
-                    className="input"
-                    type="number"
-                    min={1}
-                    max={12}
-                    step={1}
-                    value={chapterConcurrency}
-                    onChange={(event) => setChapterConcurrency(event.target.value)}
-                  />
-                  <p className="hint">
-                    Default is 1 for reliability. You can raise this up to 12 if your model/gateway can handle higher parallel load.
-                  </p>
-                </label>
-              </details>
-
               <label className="field">
-                <span className="field__label">EPUB File (web fallback upload)</span>
+                <span className="field__label">Step 1 — EPUB file</span>
                 <div
                   className={`dropzone ${isDropActive ? "dropzone--active" : ""}`}
                   onDragOver={handleDropZoneDragOver}
                   onDragLeave={handleDropZoneDragLeave}
                   onDrop={handleDropZoneDrop}
                 >
-                  Drag and drop an EPUB here, or use the file picker below.
+                  Drag and drop an EPUB here.
                 </div>
                 <input
                   className="file"
@@ -1648,38 +1571,15 @@ export default function Home() {
                 <p className="hint">
                   {isInspectingFile
                     ? "Inspecting EPUB..."
-                    : parsedBookCache
-                      ? `Detected ${parsedBookCache.chapters.length} chapters.`
-                      : "Fallback mode: select a file for a direct web run if chat upload is not convenient."}
+                    : epubFile
+                      ? `Selected: ${epubFile.name}`
+                      : "No file selected yet."}
                 </p>
               </label>
 
-              {estimate ? (
-                <div className="alert alert--info">
-                  <strong>Pre-run estimate:</strong> {estimate.chapterCount} chapters · about{" "}
-                  {estimate.callCount} model calls (1 per chapter + 1 synthesis).
-                  {estimate.chapterCount > 50 ? (
-                    <> High chapter count — consider lowering max chapters.</>
-                  ) : null}
-                </div>
-              ) : null}
-
-              <label className="checkbox">
-                <input
-                  type="checkbox"
-                  checked={rightsConfirmed}
-                  onChange={(event) => setRightsConfirmed(event.target.checked)}
-                />
-                <span>
-                  I confirm I have legal rights or permission to process this content.
-                </span>
-              </label>
-
-              {error ? <div className="alert alert--error">{error}</div> : null}
-
               <div className="button-row">
                 <button className="button" disabled={isRunning || isInspectingFile} type="submit">
-                  {isRunning ? "Compressing..." : "Start Compression"}
+                  {isRunning ? "Compressing..." : "Step 2 — Start Compression"}
                 </button>
 
                 <button
@@ -1690,161 +1590,14 @@ export default function Home() {
                 >
                   Stop
                 </button>
-
-                <button
-                  className="button button--ghost"
-                  disabled={isRunning || (!chapterResults.length && !bookSynthesis)}
-                  type="button"
-                  onClick={clearOutput}
-                >
-                  Clear Output
-                </button>
               </div>
-
-              <p className="hint" style={{ marginTop: 12 }}>
-                Each successful run is saved to local history with permalink format <code>/&lt;id&gt;</code>.
-                Use library export/import to share analyses without reprocessing EPUBs.
-              </p>
             </form>
 
-            <div className="legal">
-              <p>
-                <strong>Privacy:</strong> source content is processed on this machine. Saved outputs
-                stay local in this machine's runtime storage.
-              </p>
-              <p>
-                <strong>Runtime:</strong> if you refresh, in-flight processing stops. Latest run output
-                is checkpointed in browser storage, and completed runs are saved as local permalinks.
-              </p>
-              <p>
-                <strong>Legal:</strong> do not upload material unless you have rights or permission
-                to process it.
-              </p>
-            </div>
-          </section>
-
-          <section className="card">
-            <h2 className="card__title">Local Library</h2>
-            <p className="card__subtitle">
-              Completed compressions live on this machine as local permalinks.
-            </p>
-
             {savedBookId ? (
-              <div className="alert alert--info">
-                Saved successfully: <Link href={`/${savedBookId}`}>/{savedBookId}</Link>
+              <div className="alert alert--info" style={{ marginTop: 12 }}>
+                Step 3 — Saved: <Link href={`/${savedBookId}`}>/{savedBookId}</Link>
               </div>
             ) : null}
-
-            <div className="button-row" style={{ marginBottom: 10 }}>
-              <button
-                className="button button--ghost"
-                type="button"
-                onClick={() => {
-                  void loadLibrary();
-                }}
-                disabled={isLibraryLoading}
-              >
-                {isLibraryLoading ? "Refreshing..." : "Refresh Library"}
-              </button>
-              <button
-                className="button button--ghost"
-                type="button"
-                onClick={handleExportLibrary}
-                disabled={isLibraryLoading || !libraryBooks.length}
-              >
-                Export Library
-              </button>
-              <button
-                className="button button--ghost"
-                type="button"
-                onClick={() => {
-                  importInputRef.current?.click();
-                }}
-                disabled={isImportingLibrary}
-              >
-                {isImportingLibrary ? "Importing..." : "Import to Library"}
-              </button>
-              <button
-                className="button button--ghost"
-                type="button"
-                onClick={() => {
-                  void handleClearAllBooks();
-                }}
-                disabled={isLibraryLoading || !libraryBooks.length}
-              >
-                Clear All Data
-              </button>
-            </div>
-
-            <input
-              ref={importInputRef}
-              type="file"
-              accept="application/json,.json"
-              style={{ display: "none" }}
-              onChange={(event) => {
-                void handleImportLibraryFile(event.target.files?.[0] || null);
-              }}
-            />
-
-            {libraryError ? <div className="alert alert--error">{libraryError}</div> : null}
-            {libraryNotice ? <div className="alert alert--info">{libraryNotice}</div> : null}
-
-            {isLibraryLoading ? (
-              <div className="alert alert--info">Loading local library...</div>
-            ) : !libraryBooks.length ? (
-              <div className="alert alert--info">No saved books yet.</div>
-            ) : (
-              <div className="library-list">
-                {libraryBooks.map((book) => (
-                  <article className="library-item" key={book.id}>
-                    <div>
-                      <p className="library-item__title">
-                        <Link href={`/${book.id}`}>{book.bookTitle}</Link>
-                      </p>
-                      <p className="library-item__meta">
-                        {new Date(book.createdAt).toLocaleString()} · {book.chapterCount} chapters
-                        {book.hasSynthesis ? " · synthesis" : ""}
-                      </p>
-                      <p className="library-item__meta">
-                        <code>/{book.id}</code>
-                      </p>
-                    </div>
-
-                    <div className="library-item__actions">
-                      <a className="button button--ghost button-link" href={withBasePath(`/${book.id}`)}>
-                        Open
-                      </a>
-                      <button
-                        className="button button--ghost button-link"
-                        type="button"
-                        onClick={() => {
-                          handleExportBook(book.id);
-                        }}
-                      >
-                        Export
-                      </button>
-                      <button
-                        className="button button--ghost"
-                        type="button"
-                        onClick={() => {
-                          void handleDeleteBook(book.id);
-                        }}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )}
-
-            <hr className="library-divider" />
-
-            <h3 className="card__title">Fallback run status</h3>
-            <p className="card__subtitle">
-              {bookTitle ? `Book: ${bookTitle}` : "No fallback upload running."}
-              {isSavingBook ? " Saving to local library..." : ""}
-            </p>
 
             {resumeNotice ? <div className="alert alert--info">{resumeNotice}</div> : null}
             {error ? <div className="alert alert--error">{error}</div> : null}
@@ -1855,37 +1608,223 @@ export default function Home() {
             </div>
 
             {chapterResults.length ? (
-              <div className="chapter-list" style={{ marginBottom: 12 }}>
-                {chapterResults
-                  .slice()
-                  .sort((a, b) => a.chapterIndex - b.chapterIndex)
-                  .map((result) => (
-                    <article className="chapter-card" key={`${result.chapterIndex}-${result.chapterTitle}`}>
-                      <div className="chapter-card__top">
-                        <h3 className="chapter-card__title">
-                          Chapter {result.chapterIndex}: {result.chapterTitle}
-                        </h3>
-                        <span className={statusClass(result.status)}>{result.status}</span>
-                      </div>
-                      {typeof result.processedChars === "number" ? (
-                        <p className="chapter-card__meta">
-                          {result.truncated ? "truncated" : "full"} · {result.processedChars.toLocaleString()} chars
-                        </p>
-                      ) : null}
-                      {result.error ? <p className="chapter-card__meta" style={{ color: "#ffc9c9" }}>{result.error}</p> : null}
-                    </article>
-                  ))}
-              </div>
+              <details className="prompt-editor" style={{ marginTop: 12 }}>
+                <summary className="prompt-editor__summary">Chapter status</summary>
+                <div className="chapter-list" style={{ marginBottom: 12 }}>
+                  {chapterResults
+                    .slice()
+                    .sort((a, b) => a.chapterIndex - b.chapterIndex)
+                    .map((result) => (
+                      <article className="chapter-card" key={`${result.chapterIndex}-${result.chapterTitle}`}>
+                        <div className="chapter-card__top">
+                          <h3 className="chapter-card__title">
+                            Chapter {result.chapterIndex}: {result.chapterTitle}
+                          </h3>
+                          <span className={statusClass(result.status)}>{result.status}</span>
+                        </div>
+                        {typeof result.processedChars === "number" ? (
+                          <p className="chapter-card__meta">
+                            {result.truncated ? "truncated" : "full"} · {result.processedChars.toLocaleString()} chars
+                          </p>
+                        ) : null}
+                        {result.error ? <p className="chapter-card__meta" style={{ color: "#ffc9c9" }}>{result.error}</p> : null}
+                      </article>
+                    ))}
+                </div>
+              </details>
             ) : null}
 
             {chapterResults.length ? (
               <p className="footer-note">
-                Latest run: {successfulChapters.length} successful chapters
-                {bookSynthesis ? " + synthesis" : ""}. Use the saved permalink above to read the full output.
+                {successfulChapters.length}/{chapterResults.length} chapters done
+                {bookSynthesis ? " + synthesis complete" : ""}.
               </p>
-            ) : (
-              <p className="footer-note">When a fallback upload finishes, it is auto-saved to local library.</p>
-            )}
+            ) : null}
+
+            <details className="prompt-editor" style={{ marginTop: 14 }}>
+              <summary className="prompt-editor__summary">Advanced (optional)</summary>
+
+              <label className="field">
+                <span className="field__label">Chapter Model</span>
+                <input
+                  className="input"
+                  type="text"
+                  value={chapterModel}
+                  onChange={(event) => setChapterModel(event.target.value)}
+                  placeholder="(optional) host default if blank"
+                />
+              </label>
+
+              <label className="field">
+                <span className="field__label">Book Synthesis Model</span>
+                <input
+                  className="input"
+                  type="text"
+                  value={synthesisModel}
+                  onChange={(event) => setSynthesisModel(event.target.value)}
+                  placeholder="(optional) host default if blank"
+                />
+              </label>
+
+              <label className="field">
+                <span className="field__label">Detail Level</span>
+                <select
+                  className="select"
+                  value={detailLevel}
+                  onChange={(event) => setDetailLevel(event.target.value as DetailLevel)}
+                >
+                  <option value="tight">Tight</option>
+                  <option value="balanced">Balanced</option>
+                  <option value="deep">Deep</option>
+                </select>
+              </label>
+
+              <label className="field">
+                <span className="field__label">Max Chapters (0 = all)</span>
+                <input
+                  className="input"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={maxChapters}
+                  onChange={(event) => setMaxChapters(event.target.value)}
+                />
+              </label>
+
+              <label className="field">
+                <span className="field__label">Parallel Chapter Workers (1-12)</span>
+                <input
+                  className="input"
+                  type="number"
+                  min={1}
+                  max={12}
+                  step={1}
+                  value={chapterConcurrency}
+                  onChange={(event) => setChapterConcurrency(event.target.value)}
+                />
+              </label>
+
+              <div className="button-row" style={{ marginTop: 8 }}>
+                <button
+                  className="button button--ghost"
+                  disabled={isRunning || (!chapterResults.length && !bookSynthesis)}
+                  type="button"
+                  onClick={clearOutput}
+                >
+                  Clear Output
+                </button>
+              </div>
+
+              <hr className="library-divider" />
+              <h3 className="card__title">Local library</h3>
+              <p className="card__subtitle">Saved runs stay on this machine.</p>
+
+              <div className="button-row" style={{ marginBottom: 10 }}>
+                <button
+                  className="button button--ghost"
+                  type="button"
+                  onClick={() => {
+                    void loadLibrary();
+                  }}
+                  disabled={isLibraryLoading}
+                >
+                  {isLibraryLoading ? "Refreshing..." : "Refresh"}
+                </button>
+                <button
+                  className="button button--ghost"
+                  type="button"
+                  onClick={handleExportLibrary}
+                  disabled={isLibraryLoading || !libraryBooks.length}
+                >
+                  Export All
+                </button>
+                <button
+                  className="button button--ghost"
+                  type="button"
+                  onClick={() => {
+                    importInputRef.current?.click();
+                  }}
+                  disabled={isImportingLibrary}
+                >
+                  {isImportingLibrary ? "Importing..." : "Import"}
+                </button>
+              </div>
+
+              <input
+                ref={importInputRef}
+                type="file"
+                accept="application/json,.json"
+                style={{ display: "none" }}
+                onChange={(event) => {
+                  void handleImportLibraryFile(event.target.files?.[0] || null);
+                }}
+              />
+
+              {libraryError ? <div className="alert alert--error">{libraryError}</div> : null}
+              {libraryNotice ? <div className="alert alert--info">{libraryNotice}</div> : null}
+
+              {isLibraryLoading ? (
+                <div className="alert alert--info">Loading local library...</div>
+              ) : !libraryBooks.length ? (
+                <div className="alert alert--info">No saved books yet.</div>
+              ) : (
+                <div className="library-list">
+                  {libraryBooks.slice(0, 8).map((book) => (
+                    <article className="library-item" key={book.id}>
+                      <div>
+                        <p className="library-item__title">
+                          <Link href={`/${book.id}`}>{book.bookTitle}</Link>
+                        </p>
+                        <p className="library-item__meta">
+                          {new Date(book.createdAt).toLocaleString()} · {book.chapterCount} chapters
+                          {book.hasSynthesis ? " · synthesis" : ""}
+                        </p>
+                        <p className="library-item__meta">
+                          <code>/{book.id}</code>
+                        </p>
+                      </div>
+
+                      <div className="library-item__actions">
+                        <a className="button button--ghost button-link" href={withBasePath(`/${book.id}`)}>
+                          Open
+                        </a>
+                        <button
+                          className="button button--ghost button-link"
+                          type="button"
+                          onClick={() => {
+                            handleExportBook(book.id);
+                          }}
+                        >
+                          Export
+                        </button>
+                        <button
+                          className="button button--ghost"
+                          type="button"
+                          onClick={() => {
+                            void handleDeleteBook(book.id);
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+
+              <div className="button-row" style={{ marginTop: 10 }}>
+                <button
+                  className="button button--ghost"
+                  type="button"
+                  onClick={() => {
+                    void handleClearAllBooks();
+                  }}
+                  disabled={isLibraryLoading || !libraryBooks.length}
+                >
+                  Clear All Data
+                </button>
+              </div>
+            </details>
           </section>
         </div>
       </div>
