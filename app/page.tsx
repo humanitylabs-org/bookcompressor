@@ -101,7 +101,7 @@ async function postJsonWithTimeout<TPayload, TResult>(
   url: string,
   payload: TPayload,
   externalSignal: AbortSignal,
-  timeoutMs = 180_000,
+  timeoutMs = 420_000,
 ): Promise<TResult> {
   const internalController = new AbortController();
   const timeout = setTimeout(() => {
@@ -993,6 +993,79 @@ export default function Home() {
         })),
       );
 
+      const doneByChapter = new Map<
+        number,
+        {
+          chapterIndex: number;
+          chapterTitle: string;
+          summary: string;
+          truncated?: boolean;
+          originalChars?: number;
+          processedChars?: number;
+        }
+      >();
+
+      const CHAPTER_TIMEOUT_MS = 420_000;
+      const RETRY_CHAPTER_TIMEOUT_MS = 720_000;
+      const SYNTHESIS_TIMEOUT_MS = 600_000;
+      const CHAPTER_RETRY_ATTEMPTS = 2;
+
+      const runChapterSummary = async (
+        chapter: ParsedChapter,
+        timeoutMs: number,
+      ) => {
+        return postJsonWithTimeout<
+          {
+            model?: string;
+            chapterTitle: string;
+            chapterText: string;
+            chapterIndex: number;
+            totalChapters: number;
+            detailLevel: DetailLevel;
+            promptConfig: PromptConfig;
+          },
+          {
+            finalSummary?: string;
+            truncated?: boolean;
+            originalChars?: number;
+            processedChars?: number;
+          }
+        >(
+          withBasePath("/api/summarize-chapter"),
+          {
+            model: chapterModel.trim() || undefined,
+            chapterTitle: chapter.chapterTitle,
+            chapterText: chapter.chapterText,
+            chapterIndex: chapter.chapterIndex,
+            totalChapters: selectedChapters.length,
+            detailLevel,
+            promptConfig,
+          },
+          runController.signal,
+          timeoutMs,
+        );
+      };
+
+      const storeChapterSummary = (
+        chapter: ParsedChapter,
+        payload: {
+          finalSummary?: string;
+          truncated?: boolean;
+          originalChars?: number;
+          processedChars?: number;
+        },
+      ) => {
+        if (!payload.finalSummary) return;
+        doneByChapter.set(chapter.chapterIndex, {
+          chapterIndex: chapter.chapterIndex,
+          chapterTitle: chapter.chapterTitle,
+          summary: payload.finalSummary,
+          truncated: payload.truncated,
+          originalChars: payload.originalChars,
+          processedChars: payload.processedChars,
+        });
+      };
+
       const doneNow: Array<{
         chapterIndex: number;
         chapterTitle: string;
@@ -1025,35 +1098,7 @@ export default function Home() {
           updateChapter(chapter.chapterIndex, { status: "running", error: undefined });
 
           try {
-            const payload = await postJsonWithTimeout<
-              {
-                model?: string;
-                chapterTitle: string;
-                chapterText: string;
-                chapterIndex: number;
-                totalChapters: number;
-                detailLevel: DetailLevel;
-                promptConfig: PromptConfig;
-              },
-              {
-                finalSummary?: string;
-                truncated?: boolean;
-                originalChars?: number;
-                processedChars?: number;
-              }
-            >(
-              withBasePath("/api/summarize-chapter"),
-              {
-                model: chapterModel.trim() || undefined,
-                chapterTitle: chapter.chapterTitle,
-                chapterText: chapter.chapterText,
-                chapterIndex: chapter.chapterIndex,
-                totalChapters: selectedChapters.length,
-                detailLevel,
-                promptConfig,
-              },
-              runController.signal,
-            );
+            const payload = await runChapterSummary(chapter, CHAPTER_TIMEOUT_MS);
 
             updateChapter(chapter.chapterIndex, {
               status: "done",
@@ -1063,16 +1108,7 @@ export default function Home() {
               processedChars: payload.processedChars,
             });
 
-            if (payload.finalSummary) {
-              doneNow.push({
-                chapterIndex: chapter.chapterIndex,
-                chapterTitle: chapter.chapterTitle,
-                summary: payload.finalSummary,
-                truncated: payload.truncated,
-                originalChars: payload.originalChars,
-                processedChars: payload.processedChars,
-              });
-            }
+            storeChapterSummary(chapter, payload);
           } catch (chapterError) {
             const message =
               chapterError instanceof Error ? chapterError.message : "Unknown chapter failure.";
@@ -1101,6 +1137,103 @@ export default function Home() {
         return;
       }
 
+      let failedChapters = selectedChapters.filter(
+        (chapter) => !doneByChapter.has(chapter.chapterIndex),
+      );
+
+      if (failedChapters.length) {
+        setStatusLine(`Retrying ${failedChapters.length} chapter${failedChapters.length === 1 ? "" : "s"}...`);
+
+        for (const chapter of failedChapters) {
+          if (runController.signal.aborted) {
+            setStatusLine("Stopped by user.");
+            return;
+          }
+
+          let chapterRecovered = false;
+          let lastError = "Chapter failed after retries.";
+
+          for (let attempt = 1; attempt <= CHAPTER_RETRY_ATTEMPTS; attempt += 1) {
+            setStatusLine(
+              `Retrying chapter ${chapter.chapterIndex}/${selectedChapters.length} (attempt ${attempt}/${CHAPTER_RETRY_ATTEMPTS})...`,
+            );
+            updateChapter(chapter.chapterIndex, { status: "running", error: undefined });
+
+            try {
+              const payload = await runChapterSummary(chapter, RETRY_CHAPTER_TIMEOUT_MS);
+
+              updateChapter(chapter.chapterIndex, {
+                status: "done",
+                finalSummary: payload.finalSummary,
+                truncated: payload.truncated,
+                originalChars: payload.originalChars,
+                processedChars: payload.processedChars,
+              });
+
+              storeChapterSummary(chapter, payload);
+              chapterRecovered = Boolean(payload.finalSummary);
+
+              if (!chapterRecovered) {
+                lastError = "Model returned empty chapter output.";
+              } else {
+                break;
+              }
+            } catch (retryError) {
+              const message =
+                retryError instanceof Error ? retryError.message : "Unknown chapter failure.";
+              lastError = message;
+
+              if (message === "Run stopped by user.") {
+                setStatusLine("Stopped by user.");
+                return;
+              }
+            }
+          }
+
+          if (!chapterRecovered) {
+            updateChapter(chapter.chapterIndex, {
+              status: "failed",
+              error: lastError,
+            });
+          }
+        }
+
+        failedChapters = selectedChapters.filter(
+          (chapter) => !doneByChapter.has(chapter.chapterIndex),
+        );
+      }
+
+      if (failedChapters.length) {
+        const failedPreview = failedChapters
+          .slice(0, 4)
+          .map((chapter) => `Chapter ${chapter.chapterIndex}`)
+          .join(", ");
+        const remainder = failedChapters.length > 4 ? ` +${failedChapters.length - 4} more` : "";
+
+        setError(
+          `Run incomplete: ${failedChapters.length}/${selectedChapters.length} chapters failed (${failedPreview}${remainder}). Nothing was saved. Try again with Parallel Chapter Workers = 1.`,
+        );
+        setStatusLine("Run incomplete (chapters failed). Not saved.");
+        return;
+      }
+
+      doneNow.push(
+        ...selectedChapters
+          .map((chapter) => doneByChapter.get(chapter.chapterIndex))
+          .filter(
+            (
+              value,
+            ): value is {
+              chapterIndex: number;
+              chapterTitle: string;
+              summary: string;
+              truncated?: boolean;
+              originalChars?: number;
+              processedChars?: number;
+            } => Boolean(value),
+          ),
+      );
+
       if (doneNow.length) {
         const orderedDone = doneNow.slice().sort((a, b) => a.chapterIndex - b.chapterIndex);
         let finalSynthesis = "";
@@ -1126,6 +1259,7 @@ export default function Home() {
             promptConfig,
           },
           runController.signal,
+          SYNTHESIS_TIMEOUT_MS,
         );
 
         if (synthesisPayload.finalSynthesis) {
