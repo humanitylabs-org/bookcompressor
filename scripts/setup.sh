@@ -45,7 +45,11 @@ echo "Step 4/5: expose tailnet path"
 ./scripts/serve-path.sh
 
 echo
-echo "Step 5/5: verify health"
+echo "Step 5/6: install/verify systemd auto-start"
+./scripts/install-service.sh
+
+echo
+echo "Step 6/6: verify health"
 if command -v curl >/dev/null 2>&1; then
   HEALTH_URL="http://${HOST}:${PORT}${BASE_PATH}/api/health"
   if curl -fsS "$HEALTH_URL" >/dev/null; then
