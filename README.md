@@ -2,6 +2,13 @@
 
 Book Compressor is a local-first EPUB compression tool.
 
+## Project identity (important)
+
+This repository is the **tailnet/self-hosted app** for path-based deployment (`/bookcompressor`).
+
+It is separate from any legacy/public-hosted deployment such as `book-compressor.vercel.app`.
+Do not mix code, runtime data, or release flow between those projects.
+
 - Chat-first workflow (send EPUB to your AI gateway)
 - Local permalink library for completed compressions (`/<id>`)
 - Web upload fallback (drag/drop + file picker) for large/direct runs
