@@ -18,8 +18,13 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Book Compressor",
+  title: "📚 Book Compressor",
+  applicationName: "Book Compressor",
   description: "Chat-first EPUB compression with host-managed AI inference, local permalinks, and web upload fallback.",
+  appleWebApp: {
+    title: "Book Compressor",
+    statusBarStyle: "black-translucent",
+  },
 };
 
 export default function RootLayout({

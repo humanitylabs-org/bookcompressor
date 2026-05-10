@@ -14,7 +14,7 @@ export default function manifest(): MetadataRoute.Manifest {
 
   return {
     name: "Book Compressor",
-    short_name: "BookComp",
+    short_name: "Book Compressor",
     description:
       "Chat-first EPUB compression with host-managed AI inference, local permalinks, and web upload fallback.",
     id: scopedRoot,
