@@ -37,19 +37,20 @@ PWA note:
 
 The app no longer asks users to paste an API key in the form.
 
-By default it uses the host's OpenClaw-connected model stack via:
-- `openclaw capability model run --gateway`
+Book Compressor is agent-agnostic. At setup time it can use whichever runtime is already on the host:
+- `hermes` (recommended/default preference)
+- `openclaw`
+- `openrouter`
+- any custom CLI command via `BOOK_COMPRESSOR_AGENT_COMMAND`
 
-So if OpenClaw is already configured on the machine, users can run Book Compressor without adding a separate model key here.
+Run `./scripts/agent-select.sh` to choose explicitly. If no choice is saved, `auto` tries custom command, Hermes, OpenClaw, then OpenRouter.
 
-Optional fallback mode:
-- Set `BOOK_COMPRESSOR_INFERENCE_PROVIDER=openrouter`
-- Then provide one of these env vars:
-  - `OPENROUTER_API_KEY` (recommended)
-  - `OPENROUTER_KEY`
-  - `OPENROUTER_API_TOKEN`
-  - `AI_API_KEY`
-  - `LLM_API_KEY`
+Runtime env vars:
+- `BOOK_COMPRESSOR_INFERENCE_PROVIDER=auto|hermes|openclaw|openrouter|agent-command`
+- `BOOK_COMPRESSOR_AGENT_COMMAND=my-agent` plus `BOOK_COMPRESSOR_AGENT_ARGS='["run", "--prompt", "{prompt}"]'` for custom CLIs
+- `BOOK_COMPRESSOR_HERMES_PROVIDER=<provider>` if Hermes should force a provider
+- `BOOK_COMPRESSOR_OPENROUTER_DEFAULT_MODEL=anthropic/claude-haiku-4.5`
+- OpenRouter key aliases: `OPENROUTER_API_KEY`, `OPENROUTER_KEY`, `OPENROUTER_API_TOKEN`, `AI_API_KEY`, `LLM_API_KEY`
 
 ## Core constraints
 
@@ -67,7 +68,7 @@ npm run dev -- --hostname 127.0.0.1 --port 3000
 ```
 
 Prerequisite for default mode:
-- OpenClaw Gateway is running and usable on this machine
+- A usable model runtime on this machine. Hermes is preferred, but OpenClaw, OpenRouter, or a custom command also work.
 
 Open:
 - `http://localhost:3000/bookcompressor`
@@ -78,7 +79,10 @@ Open:
 # one-command guided setup (recommended)
 ./scripts/setup.sh
 
-# prerequisite check (tailscale + openclaw + model smoke + port)
+# choose or auto-detect the model runtime (Hermes/OpenClaw/OpenRouter/custom)
+./scripts/agent-select.sh
+
+# prerequisite check (tailscale + model runtime + port)
 ./scripts/prereq-check.sh
 
 # install deps
@@ -122,7 +126,7 @@ Optional runtime env vars:
 - `BOOK_COMPRESSOR_HOST=127.0.0.1` (default `127.0.0.1`)
 - `BOOK_COMPRESSOR_PORT=3000` (default `3000`)
 - `NEXT_PUBLIC_BASE_PATH=/bookcompressor` (default `/bookcompressor`)
-- `BOOK_COMPRESSOR_INFERENCE_PROVIDER=openclaw|openrouter` (default `openclaw`)
+- `BOOK_COMPRESSOR_INFERENCE_PROVIDER=auto|hermes|openclaw|openrouter|agent-command` (default `auto`; prefers Hermes when available)
 - `BOOK_COMPRESSOR_AI_TIMEOUT_MS=300000` (default `300000`)
 
 ## API routes

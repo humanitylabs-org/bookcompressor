@@ -24,7 +24,20 @@ if [[ -z "$BASE_PATH" ]]; then
   exit 1
 fi
 
-echo "Step 1/5: prerequisite check"
+echo "Step 1/7: choose agent/model runtime"
+./scripts/agent-select.sh
+# shellcheck disable=SC1091
+if [[ -f .runtime/bookcompressor.env ]]; then
+  set -a
+  . .runtime/bookcompressor.env
+  set +a
+fi
+BASE_PATH="$(normalize_base_path "${NEXT_PUBLIC_BASE_PATH:-${BOOK_COMPRESSOR_BASE_PATH:-/bookcompressor}}")"
+PORT="${BOOK_COMPRESSOR_PORT:-3000}"
+HOST="${BOOK_COMPRESSOR_HOST:-127.0.0.1}"
+
+echo
+echo "Step 2/7: prerequisite check"
 if ! ./scripts/prereq-check.sh; then
   echo
   echo "Setup paused: fix required prerequisite issues first, then run:"
@@ -33,23 +46,23 @@ if ! ./scripts/prereq-check.sh; then
 fi
 
 echo
-echo "Step 2/5: install dependencies"
+echo "Step 3/7: install dependencies"
 BOOK_COMPRESSOR_SKIP_PREREQ_CHECK=1 ./scripts/install.sh
 
 echo
-echo "Step 3/5: start app"
+echo "Step 4/7: start app"
 ./scripts/start.sh
 
 echo
-echo "Step 4/5: expose tailnet path"
+echo "Step 5/7: expose tailnet path"
 ./scripts/serve-path.sh
 
 echo
-echo "Step 5/6: install/verify systemd auto-start"
+echo "Step 6/7: install/verify systemd auto-start"
 ./scripts/install-service.sh
 
 echo
-echo "Step 6/6: verify health"
+echo "Step 7/7: verify health"
 if command -v curl >/dev/null 2>&1; then
   HEALTH_URL="http://${HOST}:${PORT}${BASE_PATH}/api/health"
   if curl -fsS "$HEALTH_URL" >/dev/null; then

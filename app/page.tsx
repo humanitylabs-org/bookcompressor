@@ -604,12 +604,12 @@ export default function Home() {
 
   const promptConfig: PromptConfig = DEFAULT_PROMPT_CONFIG;
 
-  const [bookTitle, setBookTitle] = useState("");
+  const [, setBookTitle] = useState("");
   const [chapterResults, setChapterResults] = useState<ChapterResult[]>([]);
   const [bookSynthesis, setBookSynthesis] = useState("");
 
   const [isRunning, setIsRunning] = useState(false);
-  const [isSavingBook, setIsSavingBook] = useState(false);
+  const [, setIsSavingBook] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [statusLine, setStatusLine] = useState("Idle");
   const [savedBookId, setSavedBookId] = useState<string | null>(null);
@@ -834,34 +834,41 @@ export default function Home() {
   };
 
   useEffect(() => {
-    void loadLibrary();
+    const timer = window.setTimeout(() => {
+      void loadLibrary();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
-      if (!raw) return;
+    const timer = window.setTimeout(() => {
+      try {
+        const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
+        if (!raw) return;
 
-      const parsed = JSON.parse(raw) as {
-        chapterModel?: string;
-        synthesisModel?: string;
-        detailLevel?: DetailLevel;
-        maxChapters?: string;
-        chapterConcurrency?: string;
-      };
+        const parsed = JSON.parse(raw) as {
+          chapterModel?: string;
+          synthesisModel?: string;
+          detailLevel?: DetailLevel;
+          maxChapters?: string;
+          chapterConcurrency?: string;
+        };
 
-      if (parsed.chapterModel) setChapterModel(parsed.chapterModel);
-      if (parsed.synthesisModel) setSynthesisModel(parsed.synthesisModel);
-      if (parsed.detailLevel) setDetailLevel(parsed.detailLevel);
-      if (typeof parsed.maxChapters === "string") setMaxChapters(parsed.maxChapters);
-      if (typeof parsed.chapterConcurrency === "string") {
-        if (parsed.chapterConcurrency === "1" || parsed.chapterConcurrency === "5" || parsed.chapterConcurrency === "10") {
-          setChapterConcurrency(parsed.chapterConcurrency);
+        if (parsed.chapterModel) setChapterModel(parsed.chapterModel);
+        if (parsed.synthesisModel) setSynthesisModel(parsed.synthesisModel);
+        if (parsed.detailLevel) setDetailLevel(parsed.detailLevel);
+        if (typeof parsed.maxChapters === "string") setMaxChapters(parsed.maxChapters);
+        if (typeof parsed.chapterConcurrency === "string") {
+          if (parsed.chapterConcurrency === "1" || parsed.chapterConcurrency === "5" || parsed.chapterConcurrency === "10") {
+            setChapterConcurrency(parsed.chapterConcurrency);
+          }
         }
+      } catch {
+        // ignore local storage parse failures
       }
-    } catch {
-      // ignore local storage parse failures
-    }
+    }, 0);
+
+    return () => window.clearTimeout(timer);
   }, []);
 
   useEffect(() => {
@@ -970,7 +977,7 @@ export default function Home() {
 
     try {
       const currentKey = fileFingerprint(epubFile);
-      let parsed =
+      const parsed =
         parsedBookCache && parsedFileKey === currentKey
           ? parsedBookCache
           : await parseEpubInBrowser(epubFile);

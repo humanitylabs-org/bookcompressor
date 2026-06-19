@@ -8,6 +8,14 @@ LOG_FILE="$RUNTIME_DIR/bookcompressor.log"
 
 mkdir -p "$RUNTIME_DIR"
 
+ENV_FILE="$RUNTIME_DIR/bookcompressor.env"
+# shellcheck disable=SC1090
+if [[ -f "$ENV_FILE" ]]; then
+  set -a
+  . "$ENV_FILE"
+  set +a
+fi
+
 normalize_base_path() {
   local raw="${1:-}"
   raw="${raw#/}"
