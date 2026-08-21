@@ -24,7 +24,7 @@ if [[ -z "$BASE_PATH" ]]; then
   exit 1
 fi
 
-echo "Step 1/5: prerequisite check"
+echo "Step 1/6: prerequisite check"
 if ! ./scripts/prereq-check.sh; then
   echo
   echo "Setup paused: fix required prerequisite issues first, then run:"
@@ -33,20 +33,20 @@ if ! ./scripts/prereq-check.sh; then
 fi
 
 echo
-echo "Step 2/5: install dependencies"
+echo "Step 2/6: install dependencies"
 BOOK_COMPRESSOR_SKIP_PREREQ_CHECK=1 ./scripts/install.sh
 
 echo
-echo "Step 3/5: start app"
-./scripts/start.sh
+echo "Step 3/6: build app"
+NEXT_PUBLIC_BASE_PATH="$BASE_PATH" npm run build
 
 echo
-echo "Step 4/5: expose tailnet path"
-./scripts/serve-path.sh
-
-echo
-echo "Step 5/6: install/verify systemd auto-start"
+echo "Step 4/6: install/start systemd auto-start"
 ./scripts/install-service.sh
+
+echo
+echo "Step 5/6: expose tailnet path"
+./scripts/serve-path.sh
 
 echo
 echo "Step 6/6: verify health"

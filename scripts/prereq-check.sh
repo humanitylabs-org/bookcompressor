@@ -121,28 +121,29 @@ else
   fail "npm is not installed" $'Install npm (usually bundled with Node.js), then re-run this check.'
 fi
 
-if command -v openclaw >/dev/null 2>&1; then
-  ok "openclaw CLI found"
+HERMES_BIN="${BOOK_COMPRESSOR_HERMES_BIN:-hermes}"
+if command -v "$HERMES_BIN" >/dev/null 2>&1; then
+  ok "Hermes CLI found: $(command -v "$HERMES_BIN")"
 else
-  fail "openclaw CLI not found" $'Install OpenClaw on this host, then verify:\n  openclaw status'
+  fail "Hermes CLI not found" $'Install/configure Hermes Agent, then verify:\n  hermes doctor\n  hermes auth list'
 fi
 
-if command -v openclaw >/dev/null 2>&1; then
-  echo "- running OpenClaw model smoke test..."
+if command -v "$HERMES_BIN" >/dev/null 2>&1; then
+  echo "- running Hermes model smoke test..."
   if command -v timeout >/dev/null 2>&1; then
-    SMOKE_CMD=(timeout 60 openclaw capability model run --gateway --json --prompt 'Reply with exactly: smoke-ok')
+    SMOKE_CMD=(timeout 120 "$HERMES_BIN" chat -Q --ignore-rules -t safe --source tool --reasoning none --max-turns 1 --in "$APP_DIR" -q 'Reply with exactly: smoke-ok')
   else
-    SMOKE_CMD=(openclaw capability model run --gateway --json --prompt 'Reply with exactly: smoke-ok')
+    SMOKE_CMD=("$HERMES_BIN" chat -Q --ignore-rules -t safe --source tool --reasoning none --max-turns 1 --in "$APP_DIR" -q 'Reply with exactly: smoke-ok')
   fi
 
   if out="$("${SMOKE_CMD[@]}" 2>/dev/null)"; then
     if printf '%s' "$out" | grep -qi 'smoke-ok'; then
-      ok "OpenClaw gateway model call succeeded"
+      ok "Hermes model call succeeded"
     else
-      fail "OpenClaw gateway responded but smoke text was not returned" $'Check model/provider configuration, then test manually:\n  openclaw capability model run --gateway --prompt "Reply with exactly: smoke-ok"'
+      fail "Hermes responded but smoke text was not returned" $'Check model/provider configuration, then test manually:\n  hermes chat -Q --ignore-rules -t safe --source tool --reasoning none --max-turns 1 -q "Reply with exactly: smoke-ok"'
     fi
   else
-    fail "OpenClaw gateway model call failed" $'Try:\n  openclaw status\n  openclaw gateway restart\nThen re-run this check.'
+    fail "Hermes model call failed" $'Try:\n  hermes doctor\n  hermes auth list\n  hermes chat -Q --ignore-rules -t safe --source tool --reasoning none --max-turns 1 -q "Reply with exactly: smoke-ok"\nThen re-run this check.'
   fi
 fi
 

@@ -37,10 +37,10 @@ PWA note:
 
 The app no longer asks users to paste an API key in the form.
 
-By default it uses the host's OpenClaw-connected model stack via:
-- `openclaw capability model run --gateway`
+By default it uses the host's Hermes Agent model stack via:
+- `hermes chat -Q --ignore-rules -t safe`
 
-So if OpenClaw is already configured on the machine, users can run Book Compressor without adding a separate model key here.
+So if Hermes is already configured on the machine, users can run Book Compressor without adding a separate model key here.
 
 Optional fallback mode:
 - Set `BOOK_COMPRESSOR_INFERENCE_PROVIDER=openrouter`
@@ -67,7 +67,7 @@ npm run dev -- --hostname 127.0.0.1 --port 3000
 ```
 
 Prerequisite for default mode:
-- OpenClaw Gateway is running and usable on this machine
+- Hermes Agent has a working model/provider on this machine
 
 Open:
 - `http://localhost:3000/bookcompressor`
@@ -78,7 +78,7 @@ Open:
 # one-command guided setup (recommended)
 ./scripts/setup.sh
 
-# prerequisite check (tailscale + openclaw + model smoke + port)
+# prerequisite check (tailscale + Hermes + model smoke + port)
 ./scripts/prereq-check.sh
 
 # install deps
@@ -122,7 +122,8 @@ Optional runtime env vars:
 - `BOOK_COMPRESSOR_HOST=127.0.0.1` (default `127.0.0.1`)
 - `BOOK_COMPRESSOR_PORT=3000` (default `3000`)
 - `NEXT_PUBLIC_BASE_PATH=/bookcompressor` (default `/bookcompressor`)
-- `BOOK_COMPRESSOR_INFERENCE_PROVIDER=openclaw|openrouter` (default `openclaw`)
+- `BOOK_COMPRESSOR_INFERENCE_PROVIDER=hermes|openrouter` (default `hermes`)
+- `BOOK_COMPRESSOR_HERMES_BIN=/path/to/hermes` (optional explicit CLI path)
 - `BOOK_COMPRESSOR_AI_TIMEOUT_MS=300000` (default `300000`)
 
 ## API routes
